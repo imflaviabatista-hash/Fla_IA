@@ -350,13 +350,14 @@ export async function analyzeQualitative(
     qual.posts.push(...basic.posts.filter((p) => !have.has(p.id)));
     return { qual };
   } catch (err) {
+    console.error("analise com IA", err);
     const msg =
       err instanceof Anthropic.AuthenticationError
         ? "A chave da Anthropic é inválida."
         : err instanceof Anthropic.RateLimitError
           ? "Limite da Anthropic atingido."
           : err instanceof Anthropic.APIError
-            ? `Erro da Anthropic (${err.status}).`
+            ? `Erro da Anthropic (${err.status}): ${String(err.message).slice(0, 300)}`
             : err instanceof Error
               ? err.message
               : "Erro desconhecido na IA.";
