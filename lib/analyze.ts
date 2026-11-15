@@ -1,6 +1,4 @@
-import { promises as fs } from "fs";
-import path from "path";
-import { DATA_DIR } from "./storage";
+import { kvGet, kvSet } from "./kv";
 import { analyzeQualitative } from "./ai";
 import { computeBubble } from "./algorithm";
 import { demoAccount, demoData, isDemoHandle } from "./demo";
@@ -10,43 +8,46 @@ import { computeQuant } from "./metrics";
 import { computePrivate, fetchOwnedProfile, getConnection } from "./optin";
 import type { Analysis, PrivateData } from "./types";
 
-const DIR = path.join(DATA_DIR, "analyses");
-
 export function normalizeHandle(input: string) {
   const s = input.trim();
   const fromUrl = s.match(/instagram\.com\/([a-zA-Z0-9._]+)/);
   return (fromUrl ? fromUrl[1] : s).replace(/^@/, "").replace(/[^a-zA-Z0-9._]/g, "").toLowerCase();
 }
 
-export async function readCached(handle: string): Promise<Analysis | null> {
-  try {
-    return JSON.parse(await fs.readFile(path.join(DIR, `${handle}.json`), "utf8")) as Analysis;
-  } catch {
-    return null;
-  }
+export interface AnalysisSummary {
+  handle: string;
+  name: string;
+  avatar: string | null;
+  followers: number;
+  bubble: number;
+  source: Analysis["source"];
+  createdAt: string;
 }
 
-export async function listCached() {
-  try {
-    const files = (await fs.readdir(DIR)).filter((f) => f.endsWith(".json"));
-    const items = await Promise.all(
-      files.map(async (f) => {
-        const a = JSON.parse(await fs.readFile(path.join(DIR, f), "utf8")) as Analysis;
-        return {
-          handle: a.handle,
-          name: a.profile.name,
-          avatar: a.profile.avatar,
-          followers: a.profile.followers,
-          bubble: a.bubble.profileScore,
-          source: a.source,
-          createdAt: a.createdAt,
-        };
-      }),
-    );
-    return items.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-  } catch {
-    return [];
-  }
+const KEY = (h: string) => `analysis:${h}`;
+const INDEX = "analysis:index";
+
+export async function readCached(handle: string): Promise<Analysis | null> {
+  return kvGet<Analysis>(KEY(handle));
+}
+
+export async function listCached(): Promise<AnalysisSummary[]> {
+  return (await kvGet<AnalysisSummary[]>(INDEX)) ?? [];
+}
+
+async function saveAnalysis(a: Analysis) {
+  await kvSet(KEY(a.handle), a);
+  const item: AnalysisSummary = {
+    handle: a.handle,
+    name: a.profile.name,
+    avatar: a.profile.avatar,
+    followers: a.profile.followers,
+    bubble: a.bubble.profileScore,
+    source: a.source,
+    createdAt: a.createdAt,
+  };
+  const list = [item, ...(await listCached()).filter((i) => i.handle !== a.handle)].slice(0, 200);
+  await kvSet(INDEX, list);
 }
 
 export async function runAnalysis(rawHandle: string): Promise<Analysis> {
@@ -109,7 +110,6 @@ export async function runAnalysis(rawHandle: string): Promise<Analysis> {
     warnings,
   };
 
-  await fs.mkdir(DIR, { recursive: true });
-  await fs.writeFile(path.join(DIR, `${handle}.json`), JSON.stringify(analysis));
+  await saveAnalysis(analysis).catch((e) => console.error("salvar análise", e));
   return analysis;
 }

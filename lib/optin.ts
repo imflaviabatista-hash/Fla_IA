@@ -1,7 +1,5 @@
 import { randomBytes } from "crypto";
-import { promises as fs } from "fs";
-import path from "path";
-import { DATA_DIR } from "./storage";
+import { kvDel, kvGet, kvSet } from "./kv";
 import type { Breakdown, MediaFormat, Post, PostInsights, PrivateData, Profile } from "./types";
 
 /**
@@ -10,10 +8,9 @@ import type { Breakdown, MediaFormat, Post, PostInsights, PrivateData, Profile }
  * Docs: https://developers.facebook.com/documentation/instagram-platform/instagram-api-with-unified-login
  *
  * O token é de "usuário do sistema" da empresa da pessoa e não vence.
- * Os tokens ficam em DATA_DIR/connections. Em produção, guarde num banco com criptografia.
+ * Os tokens ficam no armazenamento (Redis quando configurado). Em produção, vale criptografar.
  */
 
-const DIR = path.join(DATA_DIR, "connections");
 const version = () => process.env.IG_GRAPH_VERSION || "v27.0";
 const GRAPH = () => `https://graph.facebook.com/${version()}`;
 
@@ -84,40 +81,40 @@ export async function completeLogin(code: string): Promise<Connection[]> {
   return conns;
 }
 
+const CONN = (u: string) => `optin:conn:${u}`;
+const CONN_INDEX = "optin:index";
+
 async function saveConnection(conn: Connection) {
-  await fs.mkdir(DIR, { recursive: true });
-  await fs.writeFile(path.join(DIR, `${conn.username}.json`), JSON.stringify(conn), { mode: 0o600 });
+  await kvSet(CONN(conn.username), conn);
+  const list = (await kvGet<string[]>(CONN_INDEX)) ?? [];
+  if (!list.includes(conn.username)) await kvSet(CONN_INDEX, [...list, conn.username]);
 }
 
 const isActive = (c: Connection) => !c.expiresAt || new Date(c.expiresAt).getTime() > Date.now();
 
 export async function getConnection(username: string): Promise<Connection | null> {
   try {
-    const conn = JSON.parse(await fs.readFile(path.join(DIR, `${username}.json`), "utf8")) as Connection;
-    return isActive(conn) ? conn : null;
+    const conn = await kvGet<Connection>(CONN(username));
+    return conn && isActive(conn) ? conn : null;
   } catch {
     return null;
   }
 }
 
 export async function listConnections() {
-  try {
-    const files = (await fs.readdir(DIR)).filter((f) => f.endsWith(".json"));
-    const list = await Promise.all(
-      files.map(async (f) => {
-        const c = JSON.parse(await fs.readFile(path.join(DIR, f), "utf8")) as Connection;
-        return { username: c.username, connectedAt: c.connectedAt, expiresAt: c.expiresAt, active: isActive(c) };
-      }),
-    );
-    return list.sort((a, b) => b.connectedAt.localeCompare(a.connectedAt));
-  } catch {
-    return [];
-  }
+  const names = (await kvGet<string[]>(CONN_INDEX)) ?? [];
+  const conns = await Promise.all(names.map((u) => kvGet<Connection>(CONN(u))));
+  return conns
+    .filter((c): c is Connection => Boolean(c))
+    .map((c) => ({ username: c.username, connectedAt: c.connectedAt, expiresAt: c.expiresAt, active: isActive(c) }))
+    .sort((a, b) => b.connectedAt.localeCompare(a.connectedAt));
 }
 
 export async function removeConnection(username: string) {
   const safe = username.replace(/[^a-z0-9._]/g, "");
-  await fs.rm(path.join(DIR, `${safe}.json`), { force: true });
+  await kvDel(CONN(safe));
+  const list = (await kvGet<string[]>(CONN_INDEX)) ?? [];
+  await kvSet(CONN_INDEX, list.filter((u) => u !== safe));
 }
 
 /* ------------------------------------------------------------------ */

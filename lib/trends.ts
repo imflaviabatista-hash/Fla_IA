@@ -1,6 +1,4 @@
-import { promises as fs } from "fs";
-import path from "path";
-import { DATA_DIR } from "./storage";
+import { kvDel, kvGet, kvSet } from "./kv";
 import { hookType } from "./ai";
 import { fetchHashtagTop, fetchInstagramProfile, instagramConfigured } from "./instagram";
 import { warmImages } from "./media";
@@ -51,9 +49,8 @@ export interface TrendResult {
 
 /* ---------- Categorias ---------- */
 
-const DATA = DATA_DIR;
-const CAT_FILE = path.join(DATA, "categories.json");
-const TREND_DIR = path.join(DATA, "trends");
+const CAT_KEY = "radar:categories";
+const TREND_KEY = (id: string) => `radar:trend:${id}`;
 const CACHE_HOURS = 6;
 const WINDOW_DAYS = 30;
 
@@ -68,7 +65,32 @@ export const DEFAULT_CATEGORIES: TrendCategory[] = [
   { id: "viagem", nome: "Viagem", hashtags: ["viagem", "dicasdeviagem"], perfis: [] },
   { id: "humor", nome: "Humor", hashtags: ["humor", "memesbr"], perfis: [] },
   { id: "negocios", nome: "Negócios", hashtags: ["empreendedorismo", "marketingdigital"], perfis: [] },
+  { id: "pets", nome: "Pets", hashtags: ["cachorro", "gatos", "petlovers"], perfis: [] },
+  { id: "educacao", nome: "Educação", hashtags: ["estudos", "dicasdeestudo"], perfis: [] },
+  { id: "tecnologia", nome: "Tecnologia", hashtags: ["tecnologia", "inteligenciaartificial"], perfis: [] },
+  { id: "carreira", nome: "Carreira", hashtags: ["carreira", "rh"], perfis: [] },
+  { id: "saude", nome: "Saúde e bem-estar", hashtags: ["saudemental", "bemestar"], perfis: [] },
+  { id: "esportes", nome: "Esportes", hashtags: ["futebol", "corrida"], perfis: [] },
+  { id: "musica", nome: "Música", hashtags: ["musica", "cover"], perfis: [] },
+  { id: "games", nome: "Games", hashtags: ["games", "gamerbr"], perfis: [] },
+  { id: "artesanato", nome: "Arte e DIY", hashtags: ["artesanato", "facavocemesmo"], perfis: [] },
+  { id: "carros", nome: "Carros", hashtags: ["carros", "carrosantigos"], perfis: [] },
+  { id: "relacionamento", nome: "Relacionamento", hashtags: ["relacionamento", "casal"], perfis: [] },
+  { id: "influencia", nome: "Marketing de influência", hashtags: ["marketingdeinfluencia", "influenciadordigital"], perfis: [] },
 ];
+
+/**
+ * Hashtags são mundiais. Pra o Radar mostrar o que fura a bolha no Brasil,
+ * descarta legendas em outro alfabeto ou sem sinal de português.
+ */
+const PT_WORDS = /\b(você|voce|pra|não|nao|que|com|isso|aqui|gente|meu|minha|muito|mais|quando|tudo|dia|para|uma|esse|essa|vocês|tá|né)\b/i;
+export function looksPortuguese(text: string) {
+  const letters = text.replace(/[^\p{L}]/gu, "");
+  if (!letters) return true; // só emoji: não dá pra saber, mantém
+  const latin = letters.replace(/[^\p{Script=Latin}]/gu, "").length;
+  if (latin / letters.length < 0.8) return false;
+  return PT_WORDS.test(text) || /[ãõçáéíóúâêô]/i.test(text);
+}
 
 export function slug(s: string) {
   return s
@@ -80,7 +102,11 @@ export function slug(s: string) {
 
 export async function getCategories(): Promise<TrendCategory[]> {
   try {
-    return JSON.parse(await fs.readFile(CAT_FILE, "utf8"));
+    const saved = await kvGet<TrendCategory[]>(CAT_KEY);
+    if (!saved) return DEFAULT_CATEGORIES;
+    // categorias novas do código aparecem mesmo pra quem já salvou uma lista
+    const extra = DEFAULT_CATEGORIES.filter((d) => !saved.some((c) => c.id === d.id));
+    return [...saved, ...extra];
   } catch {
     return DEFAULT_CATEGORIES;
   }
@@ -100,9 +126,8 @@ export async function saveCategory(input: { nome: string; hashtags?: string[]; p
   };
   if (!cat.hashtags.length && !cat.perfis.length) cat.hashtags = [id];
   const next = [...cats.filter((c) => c.id !== id), cat];
-  await fs.mkdir(DATA, { recursive: true });
-  await fs.writeFile(CAT_FILE, JSON.stringify(next, null, 2));
-  await fs.rm(path.join(TREND_DIR, `${id}.json`), { force: true });
+  await kvSet(CAT_KEY, next);
+  await kvDel(TREND_KEY(id));
   return cat;
 }
 
@@ -181,7 +206,7 @@ async function liveTrends(cat: TrendCategory): Promise<{ items: TrendItem[]; avi
     try {
       const posts = await fetchHashtagTop(tag);
       posts
-        .filter((p) => new Date(p.timestamp).getTime() >= since)
+        .filter((p) => new Date(p.timestamp).getTime() >= since && looksPortuguese(p.caption))
         .forEach((p) =>
           fromTags.push(
             toItem(p, {
@@ -263,15 +288,9 @@ export async function getTrends(categoryId: string, refresh = false): Promise<Tr
   const cat = cats.find((c) => c.id === categoryId);
   if (!cat) throw new Error("Categoria não encontrada.");
 
-  const file = path.join(TREND_DIR, `${cat.id}.json`);
   if (!refresh) {
-    try {
-      const cached = JSON.parse(await fs.readFile(file, "utf8")) as TrendResult;
-      const fresh = Date.now() - new Date(cached.updatedAt).getTime() < CACHE_HOURS * 3_600_000;
-      if (fresh && cached.source === (instagramConfigured() ? "instagram" : "demo")) return cached;
-    } catch {
-      /* sem cache */
-    }
+    const cached = await kvGet<TrendResult>(TREND_KEY(cat.id));
+    if (cached && cached.source === (instagramConfigured() ? "instagram" : "demo")) return cached;
   }
 
   let items: TrendItem[];
@@ -291,7 +310,6 @@ export async function getTrends(categoryId: string, refresh = false): Promise<Tr
   await warmImages(items.map((i) => ({ id: i.id, url: i.thumbnail })));
 
   const result: TrendResult = { categoria: cat, source, updatedAt: new Date().toISOString(), items, padroes: patterns(items), avisos };
-  await fs.mkdir(TREND_DIR, { recursive: true });
-  await fs.writeFile(file, JSON.stringify(result));
+  await kvSet(TREND_KEY(cat.id), result, CACHE_HOURS * 3600).catch((e) => console.error("salvar radar", e));
   return result;
 }
