@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { listCached } from "@/lib/analyze";
 import { claudeConfigured } from "@/lib/ai";
 import { instagramConfigured } from "@/lib/instagram";
+import { kvPersistent } from "@/lib/kv";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -9,6 +10,6 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   return NextResponse.json({
     items: await listCached(),
-    status: { instagram: instagramConfigured(), ai: claudeConfigured() },
+    status: { instagram: instagramConfigured(), ai: claudeConfigured(), storage: kvPersistent() },
   });
 }
