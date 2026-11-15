@@ -29,6 +29,14 @@ Abre http://localhost:3000 e testa:
 
 Sem a chave da Anthropic, a parte qualitativa usa uma análise básica automática. Com a chave, entra a leitura completa com IA.
 
+## Login
+
+A plataforma toda pede login, menos as páginas que a criadora vê no opt-in (`/conectar/aceite` e `/conectar/obrigado`) e as páginas de privacidade e exclusão de dados.
+
+- **Administradora:** crie `ADMIN_EMAIL` e `ADMIN_PASSWORD` na Vercel. A senha nunca fica no código.
+- **Equipe:** a administradora adiciona e remove pessoas na página **Equipe** (ícone de pessoas no topo). As senhas são guardadas criptografadas (scrypt) no Redis.
+- A sessão dura 30 dias. Depois de 6 senhas erradas, o e-mail fica bloqueado por 15 minutos.
+
 ## Ligar os dados reais
 
 ### 1. Análise pública (colar o @)

@@ -1,8 +1,9 @@
 "use client";
 
-import { BookOpen, Flame, ScanSearch, Unlock } from "lucide-react";
+import { BookOpen, Flame, LogOut, ScanSearch, Unlock, Users } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
 
 const ITEMS = [
   { href: "/", label: "Analisar", icon: ScanSearch, match: (p: string) => p === "/" || p.startsWith("/perfil") },
@@ -14,7 +15,15 @@ const ITEMS = [
 export function Nav() {
   const path = usePathname();
   // a página de aceite é vista pelo criador convidado, sem o menu interno
-  const guest = ["/conectar/aceite", "/conectar/obrigado", "/privacidade", "/exclusao-de-dados"].some((p) => path.startsWith(p));
+  const guest = ["/login", "/conectar/aceite", "/conectar/obrigado", "/privacidade", "/exclusao-de-dados"].some((p) => path.startsWith(p));
+  const [me, setMe] = useState<{ name: string; role: string } | null>(null);
+  useEffect(() => {
+    if (guest) return;
+    fetch("/api/auth/me")
+      .then((r) => r.json())
+      .then(setMe)
+      .catch(() => {});
+  }, [guest, path]);
 
   return (
     <>
@@ -39,6 +48,25 @@ export function Nav() {
               );
             })}
           </nav>
+        )}
+        {!guest && me && (
+          <div className="flex items-center gap-1">
+            {me.role === "admin" && (
+              <Link
+                href="/equipe"
+                className={`grid h-9 w-9 place-items-center rounded-full transition hover:bg-white/[0.08] ${path.startsWith("/equipe") ? "bg-white/[0.1] text-white" : "text-white/60"}`}
+                title="Equipe"
+                aria-label="Equipe"
+              >
+                <Users className="h-4 w-4" />
+              </Link>
+            )}
+            <form action="/api/auth/logout" method="post">
+              <button className="grid h-9 w-9 place-items-center rounded-full text-white/60 transition hover:bg-white/[0.08] hover:text-white" title="Sair" aria-label="Sair">
+                <LogOut className="h-4 w-4" />
+              </button>
+            </form>
+          </div>
         )}
       </header>
 
