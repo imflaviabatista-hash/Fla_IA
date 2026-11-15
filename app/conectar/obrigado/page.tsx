@@ -10,7 +10,7 @@ export default async function ObrigadoPage({ searchParams }: { searchParams: Pro
         <div className="mx-auto mb-5 grid h-16 w-16 place-items-center rounded-full bg-sunset">
           <PartyPopper className="h-8 w-8" />
         </div>
-        <h1 className="text-2xl font-extrabold">Prontinho{u ? `, @${u}` : ""}!</h1>
+        <h1 className="text-2xl font-extrabold">Prontinho{u ? `, @${u.split(",").join(" e @")}` : ""}!</h1>
         <p className="mt-2 text-white/65">Sua autorização chegou. Agora é com a gente: em breve você recebe a análise completa do seu perfil.</p>
         <p className="mt-4 text-xs text-white/40">Pode fechar essa página.</p>
       </div>

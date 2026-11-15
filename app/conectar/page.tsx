@@ -8,7 +8,7 @@ import { Badge, Card } from "@/components/ui";
 interface Data {
   configured: boolean;
   invite: string | null;
-  items: { username: string; connectedAt: string; expiresAt: string; active: boolean }[];
+  items: { username: string; connectedAt: string; expiresAt: string | null; active: boolean }[];
 }
 
 export default function ConectarPage() {
@@ -115,7 +115,7 @@ export default function ConectarPage() {
           <div className="mt-2 rounded-2xl bg-amber-400/10 p-4 text-sm text-amber-100">
             <p className="font-semibold">O opt-in ainda não foi configurado.</p>
             <p className="mt-1 text-amber-100/80">
-              Preenche IG_APP_ID, IG_APP_SECRET e APP_URL no .env (o passo a passo tá no README). Enquanto isso, dá pra ver como fica a análise completa com o
+              Preenche META_APP_ID, META_APP_SECRET, META_LOGIN_CONFIG_ID e APP_URL na Vercel (o passo a passo tá no README). Enquanto isso, dá pra ver como fica a análise completa com o
               perfil{" "}
               <Link href="/perfil/demo.completo" className="font-bold underline">
                 @demo.completo
@@ -136,7 +136,7 @@ export default function ConectarPage() {
                   <p className="font-semibold">@{c.username}</p>
                   <p className="text-xs text-white/45">
                     Autorizou em {new Date(c.connectedAt).toLocaleDateString("pt-BR")} ·{" "}
-                    {c.active ? `acesso até ${new Date(c.expiresAt).toLocaleDateString("pt-BR")}` : "acesso expirado"}
+                    {!c.active ? "acesso expirado" : c.expiresAt ? `acesso até ${new Date(c.expiresAt).toLocaleDateString("pt-BR")}` : "acesso sem prazo de validade"}
                   </p>
                 </div>
                 <Link

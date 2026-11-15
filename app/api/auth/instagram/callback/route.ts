@@ -14,8 +14,8 @@ export async function GET(req: Request) {
   if (!code || !state || state !== saved) return NextResponse.redirect(new URL("/conectar/aceite?erro=sessao", req.url));
 
   try {
-    const conn = await completeLogin(code);
-    const res = NextResponse.redirect(new URL(`/conectar/obrigado?u=${conn.username}`, req.url));
+    const conns = await completeLogin(code);
+    const res = NextResponse.redirect(new URL(`/conectar/obrigado?u=${conns.map((c) => c.username).join(",")}`, req.url));
     res.cookies.delete("ig_state");
     return res;
   } catch (e) {

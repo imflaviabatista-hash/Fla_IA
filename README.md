@@ -50,13 +50,13 @@ Usa duas fontes oficiais:
 
 ### 3. Opt-in (análise completa)
 
-Usa o **login do Instagram** (Business Login for Instagram), com permissão só de leitura.
+Usa o **login unificado** da Meta, com permissão só de leitura. Apps novos não têm mais o "login do Instagram" separado. O token gerado não vence.
 
-1. No mesmo app, adiciona o produto **API do Instagram com login do Instagram**.
-2. Copia o **ID do app do Instagram** e a **chave secreta** pro `.env` (`IG_APP_ID` e `IG_APP_SECRET`).
-3. Cadastra a URL de redirecionamento: `{APP_URL}/api/auth/instagram/callback`.
-4. Preenche `APP_URL` com o endereço público da plataforma.
-5. Enquanto o app tá em modo de desenvolvimento, só funciona com contas adicionadas como testadoras. Pra mandar o link pra qualquer pessoa, o app precisa passar na revisão da Meta com as permissões `instagram_business_basic` e `instagram_business_manage_insights`. A Meta também pede política de privacidade e uma URL de exclusão de dados.
+1. No app, vai em **Instagram > API setup with Unified login** e conecta um **portfólio empresarial**.
+2. Cria uma configuração só com `instagram_basic` e `instagram_manage_insights`. Tira as permissões de mensagens, comentários, publicação e anúncios.
+3. Em **Redirect URL** da configuração, coloca `{APP_URL}/api/auth/instagram/callback`.
+4. Na Vercel, preenche `META_APP_ID`, `META_APP_SECRET` (em **Configurações do app > Básico**), `META_LOGIN_CONFIG_ID` (o ID da configuração) e `APP_URL`.
+5. Enquanto o app tá em modo de desenvolvimento, só funciona com pessoas que têm função no app. Pra mandar o link pra qualquer pessoa, o app precisa passar na revisão da Meta (acesso avançado) e ir pro modo **Ao vivo**. A Meta também pede política de privacidade e uma URL de exclusão de dados.
 
 ### 4. Análise com IA
 

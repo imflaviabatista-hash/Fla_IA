@@ -5,29 +5,28 @@ import { DATA_DIR } from "./storage";
 import type { Breakdown, MediaFormat, Post, PostInsights, PrivateData, Profile } from "./types";
 
 /**
- * Análise completa com opt-in: o dono do perfil entra com o Instagram e autoriza.
- * Usa o Instagram Login (Business Login for Instagram).
- * Docs: https://developers.facebook.com/docs/instagram-platform/instagram-api-with-instagram-login/business-login
+ * Análise completa com opt-in: o dono do perfil entra e autoriza.
+ * Usa o login unificado da Meta (Facebook Login for Business com configuração).
+ * Docs: https://developers.facebook.com/documentation/instagram-platform/instagram-api-with-unified-login
  *
- * Os tokens ficam em .data/connections. Em produção, guarde num banco com criptografia.
+ * O token é de "usuário do sistema" da empresa da pessoa e não vence.
+ * Os tokens ficam em DATA_DIR/connections. Em produção, guarde num banco com criptografia.
  */
 
 const DIR = path.join(DATA_DIR, "connections");
-const SCOPES = ["instagram_business_basic", "instagram_business_manage_insights"];
 const version = () => process.env.IG_GRAPH_VERSION || "v27.0";
-const GRAPH = () => `https://graph.instagram.com/${version()}`;
+const GRAPH = () => `https://graph.facebook.com/${version()}`;
 
 export interface Connection {
   username: string;
-  userId: string;
+  userId: string; // ID da conta profissional do Instagram
   token: string;
-  expiresAt: string;
+  expiresAt: string | null; // null = não vence
   connectedAt: string;
-  refreshedAt: string;
 }
 
 export function optinConfigured() {
-  return Boolean(process.env.IG_APP_ID && process.env.IG_APP_SECRET && process.env.APP_URL);
+  return Boolean(process.env.META_APP_ID && process.env.META_APP_SECRET && process.env.META_LOGIN_CONFIG_ID && process.env.APP_URL);
 }
 
 const appUrl = () => process.env.APP_URL!.replace(/\/$/, "");
@@ -39,13 +38,13 @@ export function newState() {
 }
 
 export function authorizeUrl(state: string) {
-  const u = new URL("https://www.instagram.com/oauth/authorize");
-  u.searchParams.set("client_id", process.env.IG_APP_ID!);
+  const u = new URL(`https://www.facebook.com/${version()}/dialog/oauth`);
+  u.searchParams.set("client_id", process.env.META_APP_ID!);
+  u.searchParams.set("config_id", process.env.META_LOGIN_CONFIG_ID!);
   u.searchParams.set("redirect_uri", redirectUri());
   u.searchParams.set("response_type", "code");
-  u.searchParams.set("scope", SCOPES.join(","));
   u.searchParams.set("state", state);
-  u.searchParams.set("enable_fb_login", "0");
+  u.searchParams.set("prompt", "login"); // mostra as opções de entrar com Facebook ou Instagram
   return u.toString();
 }
 
@@ -59,34 +58,30 @@ async function getJson(url: string, init?: RequestInit) {
   return json;
 }
 
-/** Troca o código do login por um token de 60 dias e salva a conexão. */
-export async function completeLogin(code: string): Promise<Connection> {
-  const form = new URLSearchParams({
-    client_id: process.env.IG_APP_ID!,
-    client_secret: process.env.IG_APP_SECRET!,
-    grant_type: "authorization_code",
-    redirect_uri: redirectUri(),
-    code,
-  });
-  const short = await getJson("https://api.instagram.com/oauth/access_token", { method: "POST", body: form });
-  const shortToken: string = short.access_token ?? short.data?.[0]?.access_token;
+/** Troca o código do login pelo token e salva uma conexão por conta do Instagram autorizada. */
+export async function completeLogin(code: string): Promise<Connection[]> {
+  const t = new URL(`${GRAPH()}/oauth/access_token`);
+  t.searchParams.set("client_id", process.env.META_APP_ID!);
+  t.searchParams.set("client_secret", process.env.META_APP_SECRET!);
+  t.searchParams.set("redirect_uri", redirectUri());
+  t.searchParams.set("code", code);
+  const tok = await getJson(t.toString());
+  const token: string = tok.access_token;
 
-  const long = await getJson(
-    `https://graph.instagram.com/access_token?grant_type=ig_exchange_token&client_secret=${process.env.IG_APP_SECRET}&access_token=${shortToken}`,
-  );
-  const me = await getJson(`${GRAPH()}/me?fields=user_id,username&access_token=${long.access_token}`);
+  const accounts = await getJson(`${GRAPH()}/me/assigned_instagram_accounts?fields=id,username&access_token=${token}`);
+  const list = (accounts.data ?? []) as { id: string; username: string }[];
+  if (!list.length) throw new Error("Nenhuma conta do Instagram foi compartilhada na autorização.");
 
   const now = new Date();
-  const conn: Connection = {
-    username: String(me.username).toLowerCase(),
-    userId: String(me.user_id ?? me.id),
-    token: long.access_token,
-    expiresAt: new Date(now.getTime() + (long.expires_in ?? 5_184_000) * 1000).toISOString(),
+  const conns = list.map((a) => ({
+    username: String(a.username).toLowerCase(),
+    userId: String(a.id),
+    token,
+    expiresAt: tok.expires_in ? new Date(now.getTime() + tok.expires_in * 1000).toISOString() : null,
     connectedAt: now.toISOString(),
-    refreshedAt: now.toISOString(),
-  };
-  await saveConnection(conn);
-  return conn;
+  }));
+  for (const c of conns) await saveConnection(c);
+  return conns;
 }
 
 async function saveConnection(conn: Connection) {
@@ -94,25 +89,12 @@ async function saveConnection(conn: Connection) {
   await fs.writeFile(path.join(DIR, `${conn.username}.json`), JSON.stringify(conn), { mode: 0o600 });
 }
 
+const isActive = (c: Connection) => !c.expiresAt || new Date(c.expiresAt).getTime() > Date.now();
+
 export async function getConnection(username: string): Promise<Connection | null> {
   try {
     const conn = JSON.parse(await fs.readFile(path.join(DIR, `${username}.json`), "utf8")) as Connection;
-    if (new Date(conn.expiresAt).getTime() < Date.now()) return null;
-    // Renova quando faltar menos de 10 dias (a Meta exige token com mais de 24h)
-    const left = new Date(conn.expiresAt).getTime() - Date.now();
-    const age = Date.now() - new Date(conn.refreshedAt).getTime();
-    if (left < 10 * 86_400_000 && age > 86_400_000) {
-      try {
-        const r = await getJson(`https://graph.instagram.com/refresh_access_token?grant_type=ig_refresh_token&access_token=${conn.token}`);
-        conn.token = r.access_token;
-        conn.expiresAt = new Date(Date.now() + r.expires_in * 1000).toISOString();
-        conn.refreshedAt = new Date().toISOString();
-        await saveConnection(conn);
-      } catch {
-        /* segue com o token atual */
-      }
-    }
-    return conn;
+    return isActive(conn) ? conn : null;
   } catch {
     return null;
   }
@@ -124,7 +106,7 @@ export async function listConnections() {
     const list = await Promise.all(
       files.map(async (f) => {
         const c = JSON.parse(await fs.readFile(path.join(DIR, f), "utf8")) as Connection;
-        return { username: c.username, connectedAt: c.connectedAt, expiresAt: c.expiresAt, active: new Date(c.expiresAt).getTime() > Date.now() };
+        return { username: c.username, connectedAt: c.connectedAt, expiresAt: c.expiresAt, active: isActive(c) };
       }),
     );
     return list.sort((a, b) => b.connectedAt.localeCompare(a.connectedAt));
@@ -210,7 +192,7 @@ async function accountBreakdown(token: string, userId: string, query: string): P
 export async function fetchOwnedProfile(conn: Connection, maxPosts = 60) {
   const t = conn.token;
   const me = await getJson(
-    `${GRAPH()}/me?fields=user_id,username,name,biography,website,profile_picture_url,followers_count,follows_count,media_count&access_token=${t}`,
+    `${GRAPH()}/${conn.userId}?fields=username,name,biography,website,profile_picture_url,followers_count,follows_count,media_count&access_token=${t}`,
   );
   const profile: Profile = {
     username: me.username,
@@ -225,7 +207,7 @@ export async function fetchOwnedProfile(conn: Connection, maxPosts = 60) {
 
   const raw: RawMedia[] = [];
   let next: string | null =
-    `${GRAPH()}/me/media?fields=id,caption,media_type,media_product_type,like_count,comments_count,timestamp,permalink,media_url,thumbnail_url&limit=50&access_token=${t}`;
+    `${GRAPH()}/${conn.userId}/media?fields=id,caption,media_type,media_product_type,like_count,comments_count,timestamp,permalink,media_url,thumbnail_url&limit=50&access_token=${t}`;
   while (next && raw.length < maxPosts) {
     const page = await getJson(next);
     raw.push(...(page.data as RawMedia[]));
