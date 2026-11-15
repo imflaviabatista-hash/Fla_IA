@@ -37,7 +37,7 @@ Usa o recurso **Business Discovery** da API oficial. Funciona com perfis comerci
 
 1. Deixa o seu Instagram como conta profissional e liga ele a uma Página do Facebook.
 2. Em [developers.facebook.com](https://developers.facebook.com), cria um app do tipo **Empresa** e adiciona o produto **Instagram** (API com login do Facebook).
-3. No **Graph API Explorer**, gera um token com `instagram_basic`, `pages_show_list` e `business_management`. Depois troca por um token de longa duração.
+3. No **Explorador da API do Graph**, gera um token com `instagram_basic`, `instagram_manage_insights`, `pages_show_list`, `pages_read_engagement`, `business_management` e `ads_read`. Depois estende o token no **Depurador de token de acesso** (dura 60 dias).
 4. Descobre o ID da sua conta do Instagram: `GET /me/accounts?fields=instagram_business_account`.
 5. Preenche no `.env`: `IG_USER_ID` e `IG_ACCESS_TOKEN`.
 
