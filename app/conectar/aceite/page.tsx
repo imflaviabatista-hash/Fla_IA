@@ -52,6 +52,17 @@ export default async function AceitePage({ searchParams }: { searchParams: Promi
           <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" />
           Funciona com perfil comercial ou de criador. Você escolhe qual conta compartilhar e pode tirar o acesso quando quiser, aqui ou nas configurações de integrações da Meta.
         </p>
+        <p className="mt-3 text-xs text-white/45">
+          Leia a{" "}
+          <a href="/privacidade" className="underline hover:text-white">
+            política de privacidade
+          </a>{" "}
+          e como{" "}
+          <a href="/exclusao-de-dados" className="underline hover:text-white">
+            excluir seus dados
+          </a>
+          .
+        </p>
       </div>
     </main>
   );

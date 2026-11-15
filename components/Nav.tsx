@@ -14,7 +14,7 @@ const ITEMS = [
 export function Nav() {
   const path = usePathname();
   // a página de aceite é vista pelo criador convidado, sem o menu interno
-  const guest = path.startsWith("/conectar/aceite") || path.startsWith("/conectar/obrigado");
+  const guest = ["/conectar/aceite", "/conectar/obrigado", "/privacidade", "/exclusao-de-dados"].some((p) => path.startsWith(p));
 
   return (
     <>
