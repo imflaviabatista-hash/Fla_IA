@@ -12,6 +12,7 @@ import type { TrendCategory, TrendItem, TrendResult } from "@/lib/trends";
 export default function RadarPage() {
   const [cats, setCats] = useState<TrendCategory[]>([]);
   const [active, setActive] = useState<string>("");
+  const [regiao, setRegiao] = useState<"br" | "mundo">("br");
   const [query, setQuery] = useState("");
   const [data, setData] = useState<TrendResult | null>(null);
   const [loading, setLoading] = useState(false);
@@ -30,12 +31,12 @@ export default function RadarPage() {
     loadCats().then((list) => setActive((a) => a || (fromUrl && list.some((c) => c.id === fromUrl) ? fromUrl : list[0]?.id) || ""));
   }, [loadCats]);
 
-  const load = useCallback(async (id: string, refresh = false) => {
+  const load = useCallback(async (id: string, refresh = false, reg: "br" | "mundo" = "br") => {
     if (!id) return;
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/trends?categoria=${id}${refresh ? "&refresh=1" : ""}`);
+      const res = await fetch(`/api/trends?categoria=${id}&regiao=${reg}${refresh ? "&refresh=1" : ""}`);
       const json = await res.json();
       if (!res.ok) throw new Error(json.error);
       setData(json);
@@ -47,8 +48,8 @@ export default function RadarPage() {
   }, []);
 
   useEffect(() => {
-    load(active);
-  }, [active, load]);
+    load(active, false, regiao);
+  }, [active, regiao, load]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -126,7 +127,25 @@ export default function RadarPage() {
         <section className="min-w-0">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <div>
-              <h2 className="text-2xl font-extrabold">{current?.nome ?? "Categoria"}</h2>
+              <div className="flex flex-wrap items-center gap-3">
+                <h2 className="text-2xl font-extrabold">{current?.nome ?? "Categoria"}</h2>
+                <div className="flex rounded-full bg-white/[0.06] p-1 text-xs font-semibold" role="group" aria-label="Região">
+                  {(
+                    [
+                      ["br", "🇧🇷 Brasil"],
+                      ["mundo", "🌎 Mundo"],
+                    ] as const
+                  ).map(([id, label]) => (
+                    <button
+                      key={id}
+                      onClick={() => setRegiao(id)}
+                      className={`rounded-full px-3 py-1.5 transition active:scale-95 ${regiao === id ? "bg-white text-ink" : "text-white/65 hover:text-white"}`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
               {data && (
                 <p className="text-xs text-white/45">
                   Atualizado {new Date(data.updatedAt).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}
@@ -142,7 +161,7 @@ export default function RadarPage() {
                 <Settings2 className="h-3.5 w-3.5" /> Fontes
               </button>
               <button
-                onClick={() => load(active, true)}
+                onClick={() => load(active, true, regiao)}
                 disabled={loading}
                 className="inline-flex items-center gap-1.5 rounded-full bg-white/[0.07] px-3 py-2 text-xs font-semibold text-white/80 hover:bg-white/10 disabled:opacity-50"
               >
@@ -254,7 +273,7 @@ export default function RadarPage() {
           onSaved={async () => {
             setEditing(false);
             await loadCats();
-            load(current.id, true);
+            load(current.id, true, regiao);
           }}
         />
       )}

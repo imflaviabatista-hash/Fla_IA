@@ -34,8 +34,11 @@ export interface TrendItem {
   hashtag: string | null;
 }
 
+export type Regiao = "br" | "mundo";
+
 export interface TrendResult {
   categoria: TrendCategory;
+  regiao: Regiao;
   source: "instagram" | "demo";
   updatedAt: string;
   items: TrendItem[];
@@ -50,7 +53,7 @@ export interface TrendResult {
 /* ---------- Categorias ---------- */
 
 const CAT_KEY = "radar:categories";
-const TREND_KEY = (id: string) => `radar:trend:${id}`;
+const TREND_KEY = (id: string, regiao: Regiao = "br") => `radar:trend:${id}:${regiao}`;
 const CACHE_HOURS = 6;
 const WINDOW_DAYS = 30;
 
@@ -127,7 +130,7 @@ export async function saveCategory(input: { nome: string; hashtags?: string[]; p
   if (!cat.hashtags.length && !cat.perfis.length) cat.hashtags = [id];
   const next = [...cats.filter((c) => c.id !== id), cat];
   await kvSet(CAT_KEY, next);
-  await kvDel(TREND_KEY(id));
+  await Promise.all([kvDel(TREND_KEY(id, "br")), kvDel(TREND_KEY(id, "mundo"))]);
   return cat;
 }
 
@@ -173,7 +176,7 @@ function patterns(items: TrendItem[]): TrendResult["padroes"] {
   };
 }
 
-async function liveTrends(cat: TrendCategory): Promise<{ items: TrendItem[]; avisos: string[] }> {
+async function liveTrends(cat: TrendCategory, regiao: Regiao): Promise<{ items: TrendItem[]; avisos: string[] }> {
   const avisos: string[] = [];
   const since = Date.now() - WINDOW_DAYS * 86_400_000;
   const fromProfiles: TrendItem[] = [];
@@ -206,7 +209,7 @@ async function liveTrends(cat: TrendCategory): Promise<{ items: TrendItem[]; avi
     try {
       const posts = await fetchHashtagTop(tag);
       posts
-        .filter((p) => new Date(p.timestamp).getTime() >= since && looksPortuguese(p.caption))
+        .filter((p) => new Date(p.timestamp).getTime() >= since && (regiao === "mundo" || looksPortuguese(p.caption)))
         .forEach((p) =>
           fromTags.push(
             toItem(p, {
@@ -283,13 +286,13 @@ function demoTrends(cat: TrendCategory): TrendItem[] {
 
 /* ---------- Entrada principal ---------- */
 
-export async function getTrends(categoryId: string, refresh = false): Promise<TrendResult> {
+export async function getTrends(categoryId: string, refresh = false, regiao: Regiao = "br"): Promise<TrendResult> {
   const cats = await getCategories();
   const cat = cats.find((c) => c.id === categoryId);
   if (!cat) throw new Error("Categoria não encontrada.");
 
   if (!refresh) {
-    const cached = await kvGet<TrendResult>(TREND_KEY(cat.id));
+    const cached = await kvGet<TrendResult>(TREND_KEY(cat.id, regiao));
     if (cached && cached.source === (instagramConfigured() ? "instagram" : "demo")) return cached;
   }
 
@@ -298,7 +301,7 @@ export async function getTrends(categoryId: string, refresh = false): Promise<Tr
   let source: TrendResult["source"];
   if (instagramConfigured()) {
     source = "instagram";
-    ({ items, avisos } = await liveTrends(cat));
+    ({ items, avisos } = await liveTrends(cat, regiao));
     if (!cat.perfis.length)
       avisos.unshift("Essa categoria ainda não tem perfis de referência. Adiciona alguns pra medir quem furou a bolha de verdade (views vs. seguidores).");
   } else {
@@ -309,7 +312,7 @@ export async function getTrends(categoryId: string, refresh = false): Promise<Tr
 
   await warmImages(items.map((i) => ({ id: i.id, url: i.thumbnail })));
 
-  const result: TrendResult = { categoria: cat, source, updatedAt: new Date().toISOString(), items, padroes: patterns(items), avisos };
-  await kvSet(TREND_KEY(cat.id), result, CACHE_HOURS * 3600).catch((e) => console.error("salvar radar", e));
+  const result: TrendResult = { categoria: cat, regiao, source, updatedAt: new Date().toISOString(), items, padroes: patterns(items), avisos };
+  await kvSet(TREND_KEY(cat.id, regiao), result, CACHE_HOURS * 3600).catch((e) => console.error("salvar radar", e));
   return result;
 }

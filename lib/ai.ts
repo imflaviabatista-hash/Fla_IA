@@ -181,6 +181,56 @@ const clamp10 = (n: number) => Math.max(0, Math.min(10, Math.round(n * 10) / 10)
 
 const SCHEMA_TEXT = JSON.stringify(z.toJSONSchema(QualSchema));
 
+/**
+ * Versão tolerante do schema pra ler a resposta: um campo faltando ou uma palavra
+ * fora da lista vira um valor padrão em vez de derrubar a análise inteira.
+ */
+const str = z.preprocess((v) => (v == null ? "" : String(v)), z.string()).catch("");
+const num = z.coerce.number().catch(5);
+const strs = z.array(z.preprocess((v) => (v == null ? "" : String(v)), z.string())).catch([]);
+const LenientSchema = z.object({
+  destaques: z
+    .array(z.object({ numero: str, titulo: str, detalhe: str, tipo: z.enum(["forte", "alerta", "oportunidade"]).catch("oportunidade") }))
+    .catch([]),
+  categoriaRadar: str,
+  resumo: str,
+  nicho: z.object({ principal: str, subnichos: strs, clareza: num, comentario: str }),
+  posicionamento: z
+    .object({ proposta: str, publico: str, tom: str, diferenciais: strs, pontosFracos: strs })
+    .catch({ proposta: "", publico: "", tom: "", diferenciais: [], pontosFracos: [] }),
+  temas: z.array(z.object({ nome: str, percentual: num, desempenho: z.enum(["acima", "na média", "abaixo"]).catch("na média"), comentario: str })).catch([]),
+  narrativas: z.array(z.object({ nome: str, descricao: str })).catch([]),
+  hooks: z
+    .object({ padroes: z.array(z.object({ tipo: str, exemplo: str, efetividade: str })).catch([]), nota: num, sugestoes: strs })
+    .catch({ padroes: [], nota: 5, sugestoes: [] }),
+  qualidade: z
+    .object({ nota: num, consistencia: str, legendas: str, ctas: str, comentario: str })
+    .catch({ nota: 5, consistencia: "", legendas: "", ctas: "", comentario: "" }),
+  posts: z.array(
+    z.object({
+      id: z.coerce.string(),
+      tema: str,
+      hook: str,
+      tipoHook: str,
+      forcaHook: num,
+      potencialEnvio: num,
+      riscoRecomendacao: z.string().nullable().catch(null),
+      leitura: str,
+    }),
+  ),
+  furarBolha: z
+    .object({
+      diagnostico: str,
+      oQueFunciona: strs,
+      oQueEvitar: strs,
+      ideias: z.array(z.object({ titulo: str, formato: str, hook: str, porque: str })).catch([]),
+    })
+    .catch({ diagnostico: "", oQueFunciona: [], oQueEvitar: [], ideias: [] }),
+  recomendacoes: z
+    .array(z.object({ titulo: str, detalhe: str, prioridade: z.enum(["alta", "média", "baixa"]).catch("média") }))
+    .catch([]),
+});
+
 /** Pega o JSON da resposta, mesmo se vier dentro de um bloco de código. */
 function extractJson(text: string): unknown {
   const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/);
@@ -209,6 +259,7 @@ ${SCHEMA_TEXT}`,
   ];
 
   // até 2 tentativas: se a resposta vier fora do formato, a IA recebe o erro e corrige
+  let lastProblem = "";
   for (let attempt = 0; attempt < 2; attempt++) {
     const response = await client.beta.messages
       .stream({
@@ -232,7 +283,7 @@ ${SCHEMA_TEXT}`,
 
     let problem: string;
     try {
-      const parsed = QualSchema.safeParse(extractJson(text));
+      const parsed = LenientSchema.safeParse(extractJson(text));
       if (parsed.success) {
         const out = parsed.data;
         return {
@@ -252,13 +303,15 @@ ${SCHEMA_TEXT}`,
       problem = `JSON inválido (${e instanceof Error ? e.message : "erro"})`;
     }
 
+    lastProblem = problem.slice(0, 200);
+    console.error("IA fora do formato:", problem, text.slice(0, 500));
     messages.push({ role: "assistant", content: response.content as Anthropic.Beta.BetaContentBlockParam[] });
     messages.push({
       role: "user",
       content: `A resposta não seguiu o schema: ${problem}. Mande o JSON completo de novo, corrigido, sem nenhum texto fora dele.`,
     });
   }
-  throw new Error("A IA respondeu num formato inesperado.");
+  throw new Error(`A IA respondeu num formato inesperado (${lastProblem}).`);
 }
 
 /* ------------------------------------------------------------------ */
