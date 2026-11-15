@@ -8,8 +8,17 @@ import { DATA_DIR } from "./storage";
  * Sem ele, cai em arquivos na pasta de dados (que na Vercel é temporária).
  */
 
-const url = () => process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL;
-const token = () => process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN;
+/** Acha as variáveis do Upstash mesmo com prefixo (ex.: STORAGE_KV_REST_API_URL). */
+function findEnv(suffixes: string[]) {
+  for (const suf of suffixes) {
+    if (process.env[suf]) return process.env[suf];
+    const key = Object.keys(process.env).find((k) => k.endsWith(`_${suf}`) && process.env[k]);
+    if (key) return process.env[key];
+  }
+  return undefined;
+}
+const url = () => findEnv(["KV_REST_API_URL", "UPSTASH_REDIS_REST_URL"]);
+const token = () => findEnv(["KV_REST_API_TOKEN", "UPSTASH_REDIS_REST_TOKEN"]);
 export const kvPersistent = () => Boolean(url() && token());
 
 async function redis(command: (string | number)[]) {
