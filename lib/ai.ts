@@ -188,7 +188,7 @@ ${SCHEMA_TEXT}`,
         max_tokens: 32000,
         betas: ["server-side-fallback-2026-07-01"],
         fallbacks: "default",
-        output_config: { effort: "high" },
+        output_config: { effort: "medium" }, // "high" chegou perto do limite de 5 min da Vercel grátis
         system: SYSTEM,
         messages,
       })
