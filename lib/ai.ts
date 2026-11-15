@@ -1,5 +1,4 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { z } from "zod";
 import { ALGORITHM_RULES } from "./algorithm";
 import { firstLine } from "./metrics";
@@ -152,41 +151,86 @@ export function claudeConfigured() {
 
 const clamp10 = (n: number) => Math.max(0, Math.min(10, Math.round(n * 10) / 10));
 
+const SCHEMA_TEXT = JSON.stringify(z.toJSONSchema(QualSchema));
+
+/** Pega o JSON da resposta, mesmo se vier dentro de um bloco de código. */
+function extractJson(text: string): unknown {
+  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+  const raw = fenced ? fenced[1] : text.slice(text.indexOf("{"), text.lastIndexOf("}") + 1);
+  return JSON.parse(raw);
+}
+
 async function claudeAnalysis(profile: Profile, posts: Post[], quant: Quantitative): Promise<Qualitative> {
   const client = new Anthropic({ timeout: 5 * 60 * 1000 });
   const images = await loadImages(posts, quant);
 
-  const response = await client.beta.messages.parse({
-    model: "claude-opus-5-5",
-    max_tokens: 32000,
-    betas: ["server-side-fallback-2026-07-01"],
-    fallbacks: "default",
-    output_config: { effort: "high", format: betaZodOutputFormat(QualSchema) },
-    system: SYSTEM,
-    messages: [
-      {
-        role: "user",
-        content: [
-          ...images,
-          { type: "text", text: buildPrompt(profile, posts, quant) },
-        ],
-      },
-    ],
-  });
+  const messages: Anthropic.Beta.BetaMessageParam[] = [
+    {
+      role: "user",
+      content: [
+        ...images,
+        {
+          type: "text",
+          text: `${buildPrompt(profile, posts, quant)}
 
-  if (response.stop_reason === "refusal") throw new Error("A IA não conseguiu analisar esse perfil.");
-  if (response.stop_reason === "max_tokens") throw new Error("A resposta da IA ficou grande demais.");
-  const out = response.parsed_output;
-  if (!out) throw new Error("A IA respondeu num formato inesperado.");
+Responda só com um objeto JSON válido, sem texto antes ou depois, seguindo exatamente este JSON Schema:
+${SCHEMA_TEXT}`,
+        },
+      ],
+    },
+  ];
 
-  return {
-    engine: "claude",
-    ...out,
-    nicho: { ...out.nicho, clareza: clamp10(out.nicho.clareza) },
-    hooks: { ...out.hooks, nota: clamp10(out.hooks.nota) },
-    qualidade: { ...out.qualidade, nota: clamp10(out.qualidade.nota) },
-    posts: out.posts.map((p) => ({ ...p, forcaHook: clamp10(p.forcaHook), potencialEnvio: clamp10(p.potencialEnvio) })),
-  };
+  // até 2 tentativas: se a resposta vier fora do formato, a IA recebe o erro e corrige
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const response = await client.beta.messages
+      .stream({
+        model: "claude-opus-5-5",
+        max_tokens: 32000,
+        betas: ["server-side-fallback-2026-07-01"],
+        fallbacks: "default",
+        output_config: { effort: "high" },
+        system: SYSTEM,
+        messages,
+      })
+      .finalMessage();
+
+    if (response.stop_reason === "refusal") throw new Error("A IA não conseguiu analisar esse perfil.");
+    if (response.stop_reason === "max_tokens") throw new Error("A resposta da IA ficou grande demais.");
+
+    const text = response.content
+      .filter((b): b is Anthropic.Beta.BetaTextBlock => b.type === "text")
+      .map((b) => b.text)
+      .join("");
+
+    let problem: string;
+    try {
+      const parsed = QualSchema.safeParse(extractJson(text));
+      if (parsed.success) {
+        const out = parsed.data;
+        return {
+          engine: "claude",
+          ...out,
+          nicho: { ...out.nicho, clareza: clamp10(out.nicho.clareza) },
+          hooks: { ...out.hooks, nota: clamp10(out.hooks.nota) },
+          qualidade: { ...out.qualidade, nota: clamp10(out.qualidade.nota) },
+          posts: out.posts.map((p) => ({ ...p, forcaHook: clamp10(p.forcaHook), potencialEnvio: clamp10(p.potencialEnvio) })),
+        };
+      }
+      problem = parsed.error.issues
+        .slice(0, 8)
+        .map((i) => `${i.path.join(".")}: ${i.message}`)
+        .join("; ");
+    } catch (e) {
+      problem = `JSON inválido (${e instanceof Error ? e.message : "erro"})`;
+    }
+
+    messages.push({ role: "assistant", content: response.content as Anthropic.Beta.BetaContentBlockParam[] });
+    messages.push({
+      role: "user",
+      content: `A resposta não seguiu o schema: ${problem}. Mande o JSON completo de novo, corrigido, sem nenhum texto fora dele.`,
+    });
+  }
+  throw new Error("A IA respondeu num formato inesperado.");
 }
 
 /* ------------------------------------------------------------------ */
