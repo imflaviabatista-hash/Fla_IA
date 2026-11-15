@@ -4,6 +4,7 @@ import { ArrowRight, AtSign, CheckCircle2, CircleDashed } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { readIndex } from "@/components/localCache";
 import { proxied } from "@/components/Media";
 import { Avatar, Badge } from "@/components/ui";
 import { compact } from "@/lib/format";
@@ -14,7 +15,7 @@ interface Item {
   avatar: string | null;
   followers: number;
   bubble: number;
-  source: "instagram" | "demo";
+  source: "instagram" | "optin" | "demo";
   createdAt: string;
 }
 
@@ -32,8 +33,10 @@ export default function Home() {
   useEffect(() => {
     fetch("/api/analyses")
       .then((r) => r.json())
-      .then((j) => {
-        setItems(j.items);
+      .then((j: { items: Item[]; status: { instagram: boolean; ai: boolean } }) => {
+        const local = readIndex();
+        const merged = [...local, ...j.items.filter((i) => !local.some((l) => l.handle === i.handle))];
+        setItems(merged.sort((a, b) => b.createdAt.localeCompare(a.createdAt)));
         setStatus(j.status);
       })
       .catch(() => {});

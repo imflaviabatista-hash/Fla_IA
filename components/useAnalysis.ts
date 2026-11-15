@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import type { Analysis } from "@/lib/types";
+import { readLocal, saveLocal } from "./localCache";
 
 export function useAnalysis(handle: string) {
   const [data, setData] = useState<Analysis | null>(null);
@@ -20,6 +21,7 @@ export function useAnalysis(handle: string) {
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? "Deu erro na análise.");
       setData(json);
+      saveLocal(json);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Deu erro na análise.");
     } finally {
@@ -30,10 +32,20 @@ export function useAnalysis(handle: string) {
   useEffect(() => {
     let cancelled = false;
     (async () => {
+      // 1. o que já tá guardado no navegador
+      const local = readLocal(handle);
+      if (local) {
+        setData(local);
+        return;
+      }
+      // 2. o que o servidor ainda tiver guardado
       const res = await fetch(`/api/analyze?handle=${encodeURIComponent(handle)}`);
       if (cancelled) return;
-      if (res.ok) setData(await res.json());
-      else run();
+      if (res.ok) {
+        const json = (await res.json()) as Analysis;
+        setData(json);
+        saveLocal(json);
+      } else run(); // 3. roda a análise
     })();
     return () => {
       cancelled = true;
