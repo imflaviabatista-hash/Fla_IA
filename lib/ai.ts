@@ -1,14 +1,31 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 import { ALGORITHM_RULES } from "./algorithm";
+import { hookType } from "./hooks";
 import { firstLine } from "./metrics";
-import type { Post, Profile, Quantitative, Qualitative, QualPost } from "./types";
+export { hookType };
+import type { Destaque, Post, Profile, Quantitative, Qualitative, QualPost } from "./types";
+
+export interface RadarCategory {
+  id: string;
+  nome: string;
+  hashtags: string[];
+}
 
 /* ------------------------------------------------------------------ */
 /* Schema da resposta (structured outputs)                             */
 /* ------------------------------------------------------------------ */
 
 const QualSchema = z.object({
+  destaques: z.array(
+    z.object({
+      numero: z.string(),
+      titulo: z.string(),
+      detalhe: z.string(),
+      tipo: z.enum(["forte", "alerta", "oportunidade"]),
+    }),
+  ),
+  categoriaRadar: z.string(),
   resumo: z.string(),
   nicho: z.object({
     principal: z.string(),
@@ -76,14 +93,23 @@ Baseie qualquer afirmação sobre o algoritmo só nas regras oficiais abaixo. N�
 Regras do algoritmo (fontes da Meta):
 ${ALGORITHM_RULES.map((r) => `- ${r.titulo}: ${r.oQueDiz}`).join("\n")}
 
+Escreva pouco. A plataforma é visual, então cada texto precisa ser curto e direto:
+- resumo: no máximo 3 frases.
+- comentários, "leitura", "descricao", "detalhe" e "porque": no máximo 18 palavras.
+- títulos (recomendações, ideias, destaques, narrativas): no máximo 6 palavras.
+- posicionamento.tom: até 3 adjetivos separados por vírgula. posicionamento.publico: no máximo 12 palavras. posicionamento.proposta: uma frase curta.
+- diferenciais, pontosFracos, oQueFunciona, oQueEvitar, sugestoes: frases de no máximo 12 palavras.
+
 Como preencher:
+- destaques: exatamente 4 achados principais, do mais importante pro menos. "numero" é o dado que prova o achado, curto (ex.: "7x", "72%", "2 de 50", "0,8%"). Use os números recebidos, sem inventar. "tipo" é "forte" (o que já funciona), "alerta" (o que atrapalha) ou "oportunidade" (o que dá pra explorar).
+- categoriaRadar: o id da categoria do Radar mais parecida com o nicho do perfil, escolhido da lista recebida.
 - nicho.clareza, hooks.nota e qualidade.nota vão de 0 a 10.
-- temas: de 3 a 7 temas, com o percentual aproximado de posts de cada um (soma perto de 100). "desempenho" compara o engajamento dos posts daquele tema com a média do perfil.
-- posts: um item pra CADA post recebido, usando exatamente o mesmo id. forcaHook (0 a 10) estima o quanto a abertura segura a pessoa nos primeiros segundos. potencialEnvio (0 a 10) estima a chance de alguém mandar o post por DM pra um amigo. riscoRecomendacao fica null, a não ser que o post tenha algo que as diretrizes de recomendação penalizam (isca de engajamento, repost/conteúdo não original, baixa qualidade, tema sensível). "leitura" explica em uma frase por que o post foi bem ou mal.
+- temas: de 3 a 7 temas, com nomes curtos (até 4 palavras), com o percentual aproximado de posts de cada um (soma perto de 100). "desempenho" compara o engajamento dos posts daquele tema com a média do perfil.
+- posts: um item pra CADA post recebido, usando exatamente o mesmo id. O campo "tema" de cada post precisa ser exatamente um dos nomes em temas. forcaHook (0 a 10) estima o quanto a abertura segura a pessoa nos primeiros segundos. potencialEnvio (0 a 10) estima a chance de alguém mandar o post por DM pra um amigo. riscoRecomendacao fica null, a não ser que o post tenha algo que as diretrizes de recomendação penalizam (isca de engajamento, repost/conteúdo não original, baixa qualidade, tema sensível). "leitura" explica em uma frase por que o post foi bem ou mal.
 - furarBolha.ideias: de 3 a 5 ideias de conteúdo concretas pra esse perfil chegar em gente nova, com o hook já escrito.
 - recomendacoes: de 4 a 6, ordenadas da mais importante pra menos.`;
 
-function buildPrompt(profile: Profile, posts: Post[], quant: Quantitative) {
+function buildPrompt(profile: Profile, posts: Post[], quant: Quantitative, categories: RadarCategory[]) {
   const lines = posts.map((p) => {
     const m = quant.posts[p.id];
     return JSON.stringify({
@@ -114,6 +140,8 @@ Seguidores: ${profile.followers}
 Posts analisados: ${quant.postsAnalyzed} em ${quant.periodDays} dias (${quant.postsPerWeek} por semana)
 Engajamento médio: ${quant.avgEngagement}% | mediana: ${quant.medianEngagement}%
 ${posts.some((p) => p.insights) ? "Dados internos autorizados pelo dono do perfil (opt-in): alcance, salvamentos, envios e tempo assistido são reais, não estimativas.\n" : ""}Formatos: ${quant.byFormat.map((f) => `${f.format} ${f.count} posts, ${f.avgEngagement}% de engajamento${f.avgViewsPerFollower != null ? `, views/seguidor ${f.avgViewsPerFollower}` : ""}`).join("; ")}
+
+Categorias do Radar (id: nome): ${categories.map((c) => `${c.id}: ${c.nome}`).join(" | ")}
 
 Posts (um JSON por linha):
 ${lines.join("\n")}`;
@@ -160,7 +188,7 @@ function extractJson(text: string): unknown {
   return JSON.parse(raw);
 }
 
-async function claudeAnalysis(profile: Profile, posts: Post[], quant: Quantitative): Promise<Qualitative> {
+async function claudeAnalysis(profile: Profile, posts: Post[], quant: Quantitative, categories: RadarCategory[]): Promise<Qualitative> {
   const client = new Anthropic({ timeout: 5 * 60 * 1000 });
   const images = await loadImages(posts, quant);
 
@@ -171,7 +199,7 @@ async function claudeAnalysis(profile: Profile, posts: Post[], quant: Quantitati
         ...images,
         {
           type: "text",
-          text: `${buildPrompt(profile, posts, quant)}
+          text: `${buildPrompt(profile, posts, quant, categories)}
 
 Responda só com um objeto JSON válido, sem texto antes ou depois, seguindo exatamente este JSON Schema:
 ${SCHEMA_TEXT}`,
@@ -243,19 +271,7 @@ const STOP = new Set(
   ),
 );
 
-export function hookType(hook: string): { tipo: string; bonus: number } {
-  const h = hook.toLowerCase();
-  if (/ningu[eé]m (te )?(conta|fala)|segredo|descobri|ningu[eé]m sabe/.test(h)) return { tipo: "Curiosidade", bonus: 3 };
-  if (/^(pare|n[aã]o |nunca|evite|voc[eê] (t[aá]|est[aá])|chega de)/.test(h)) return { tipo: "Alerta / quebra de padrão", bonus: 3 };
-  if (/r\$|\d+ ?(dias|meses|kg|reais)|economiz|resultado|antes e depois|custou/.test(h)) return { tipo: "Resultado / prova", bonus: 3 };
-  if (/^\d|\b\d+ (dicas|erros|h[aá]bitos|passos|coisas|formas|jeitos|motivos)/.test(h)) return { tipo: "Lista", bonus: 2 };
-  if (/\?/.test(h)) return { tipo: "Pergunta", bonus: 2 };
-  if (/^(minha|meu|arruma comigo|vlog|um dia|rotina)/.test(h)) return { tipo: "Pessoal / bastidor", bonus: 1 };
-  if (/^(como|o que|por que|porque)/.test(h)) return { tipo: "Tutorial", bonus: 2 };
-  return { tipo: "Declaração", bonus: 0 };
-}
-
-function basicAnalysis(profile: Profile, posts: Post[], quant: Quantitative): Qualitative {
+function basicAnalysis(profile: Profile, posts: Post[], quant: Quantitative, categories: RadarCategory[] = []): Qualitative {
   // Temas por palavras e hashtags mais frequentes
   const counts = new Map<string, Set<string>>();
   for (const p of posts) {
@@ -328,8 +344,17 @@ function basicAnalysis(profile: Profile, posts: Post[], quant: Quantitative): Qu
   const reel = quant.byFormat.find((f) => f.format === "REEL");
   const reach = quant.reelsReachRatio;
 
+  // categoria do Radar: a que mais aparece nas legendas e na bio
+  const text = (profile.bio + " " + posts.map((p) => p.caption).join(" ")).toLowerCase();
+  const scored = categories
+    .map((c) => ({ id: c.id, n: [c.nome.toLowerCase(), ...c.hashtags].reduce((a, w) => a + text.split(w).length - 1, 0) }))
+    .sort((a, b) => b.n - a.n);
+  const categoriaRadar = scored[0]?.n ? scored[0].id : undefined;
+
   return {
     engine: "basico",
+    destaques: basicHighlights(quant),
+    categoriaRadar,
     resumo: `Análise automática básica de @${profile.username}. Pra ter a leitura completa de nicho, posicionamento e narrativa, conecta a chave da Anthropic.`,
     nicho: {
       principal: temas[0]?.nome ?? "Não identificado",
@@ -380,16 +405,43 @@ function basicAnalysis(profile: Profile, posts: Post[], quant: Quantitative): Qu
   };
 }
 
+/** Destaques calculados direto dos números (usados quando não tem IA). */
+function basicHighlights(quant: Quantitative): Destaque[] {
+  const br = (n: number, d = 1) => n.toLocaleString("pt-BR", { maximumFractionDigits: d });
+  const out: Destaque[] = [];
+  const fmts = [...quant.byFormat].sort((a, b) => b.avgEngagement - a.avgEngagement);
+  const label: Record<string, string> = { REEL: "Reels", CAROUSEL: "Carrossel", IMAGE: "Foto", VIDEO: "Vídeo" };
+  if (fmts.length >= 2 && fmts.at(-1)!.avgEngagement > 0) {
+    const r = fmts[0].avgEngagement / fmts.at(-1)!.avgEngagement;
+    out.push({ numero: `${br(r)}x`, titulo: `${label[fmts[0].format]} é o formato campeão`, detalhe: `Engaja ${br(r)}x mais que ${label[fmts.at(-1)!.format].toLowerCase()}.`, tipo: "forte" });
+  }
+  if (quant.reelsReachRatio != null)
+    out.push({
+      numero: `${br(quant.reelsReachRatio)}x`,
+      titulo: quant.reelsReachRatio >= 1 ? "Os Reels chegam em gente nova" : "Os Reels ficam na base",
+      detalhe: "Views médias dos Reels comparadas ao número de seguidores.",
+      tipo: quant.reelsReachRatio >= 1 ? "forte" : "alerta",
+    });
+  if (quant.outliers.length)
+    out.push({ numero: `${quant.outliers.length}`, titulo: "Posts fora da curva", detalhe: "Tiveram mais que o dobro do engajamento típico do perfil.", tipo: "oportunidade" });
+  const best = [...quant.byWeekday].filter((d) => d.posts).sort((a, b) => b.avgEngagement - a.avgEngagement)[0];
+  if (best) out.push({ numero: best.day, titulo: "Melhor dia pra postar", detalhe: `${br(best.avgEngagement, 2)}% de engajamento médio nesse dia.`, tipo: "oportunidade" });
+  return out.slice(0, 4);
+}
+
 export async function analyzeQualitative(
   profile: Profile,
   posts: Post[],
   quant: Quantitative,
+  categories: RadarCategory[] = [],
 ): Promise<{ qual: Qualitative; warning?: string }> {
-  if (!claudeConfigured()) return { qual: basicAnalysis(profile, posts, quant) };
+  if (!claudeConfigured()) return { qual: basicAnalysis(profile, posts, quant, categories) };
   try {
-    const qual = await claudeAnalysis(profile, posts, quant);
+    const qual = await claudeAnalysis(profile, posts, quant, categories);
+    if (qual.categoriaRadar && !categories.some((c) => c.id === qual.categoriaRadar)) qual.categoriaRadar = undefined;
     // garante um item por post, mesmo se a IA pular algum
-    const basic = basicAnalysis(profile, posts, quant);
+    const basic = basicAnalysis(profile, posts, quant, categories);
+    qual.categoriaRadar ??= basic.categoriaRadar;
     const have = new Set(qual.posts.map((p) => p.id));
     qual.posts.push(...basic.posts.filter((p) => !have.has(p.id)));
     return { qual };

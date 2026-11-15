@@ -56,6 +56,29 @@ function buildSlides(a: Analysis): ReactNode[] {
       <p className="mt-10 text-lg text-white/40">{date}</p>
     </div>,
 
+    // 1b. Raio-X
+    ...(qual.destaques?.length
+      ? [
+          <div key="raiox">
+            <H eyebrow="Raio-X">O que mais importa</H>
+            <div className="grid grid-cols-2 gap-5">
+              {qual.destaques.slice(0, 4).map((d) => (
+                <div key={d.titulo} className="rounded-3xl border border-white/10 bg-white/[0.04] p-7">
+                  <p
+                    className={`text-sm font-bold uppercase tracking-wider ${d.tipo === "forte" ? "text-emerald-300" : d.tipo === "alerta" ? "text-amber-300" : "text-pink-300"}`}
+                  >
+                    {d.tipo === "forte" ? "Funciona" : d.tipo === "alerta" ? "Atenção" : "Oportunidade"}
+                  </p>
+                  <p className="text-gradient mt-2 text-6xl font-extrabold tracking-tight">{d.numero}</p>
+                  <p className="mt-3 text-2xl font-bold">{d.titulo}</p>
+                  <p className="mt-1 text-lg text-white/60">{d.detalhe}</p>
+                </div>
+              ))}
+            </div>
+          </div>,
+        ]
+      : []),
+
     // 2. Números
     <div key="numeros">
       <H eyebrow="Os números">O perfil hoje</H>

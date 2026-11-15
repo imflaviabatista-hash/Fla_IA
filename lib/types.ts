@@ -115,8 +115,17 @@ export interface QualPost {
   leitura: string; // por que performou (ou não)
 }
 
+export interface Destaque {
+  numero: string; // ex.: "7x", "72%", "2"
+  titulo: string; // até 8 palavras
+  detalhe: string; // até 18 palavras
+  tipo: "forte" | "alerta" | "oportunidade";
+}
+
 export interface Qualitative {
   engine: "claude" | "basico";
+  destaques?: Destaque[];
+  categoriaRadar?: string; // id da categoria do Radar mais parecida com o perfil
   resumo: string;
   nicho: { principal: string; subnichos: string[]; clareza: number; comentario: string };
   posicionamento: {

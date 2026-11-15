@@ -1,15 +1,16 @@
 "use client";
 
-import { AlertTriangle, ArrowUpRight, Lightbulb, Presentation, RefreshCw, Sparkles } from "lucide-react";
+import { AlertTriangle, ArrowUpRight, ChevronDown, Lightbulb, Presentation, RefreshCw, Sparkles, Zap } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 import { FORMAT_LABEL, compact, pct, scoreLabel, times } from "@/lib/format";
 import type { Analysis } from "@/lib/types";
 import { EngagementTimeline, FormatBars, WeekdayBars } from "./charts";
+import { Checklist, Chips, HookRanking, InsightCards, NicheRadar, ThemeMatrix } from "./Insights";
 import { proxied } from "./Media";
 import { OptinCta, PrivatePanel } from "./PrivatePanel";
 import { PostGrid, Thumb } from "./PostGrid";
-import { Avatar, Badge, Card, List, Meter, ScoreRing, SectionTitle, Stat } from "./ui";
+import { Avatar, Badge, Card, Meter, ScoreRing, SectionTitle, Stat } from "./ui";
 
 const TABS = [
   { id: "geral", label: "Visão geral" },
@@ -20,8 +21,6 @@ const TABS = [
 ] as const;
 type Tab = (typeof TABS)[number]["id"];
 
-const PRIORITY_TONE = { alta: "bad", média: "warn", baixa: "default" } as const;
-const PERF_TONE = { acima: "good", "na média": "default", abaixo: "bad" } as const;
 
 export function Dashboard({ analysis, onRefresh, refreshing }: { analysis: Analysis; onRefresh: () => void; refreshing: boolean }) {
   const [tab, setTab] = useState<Tab>("geral");
@@ -104,20 +103,22 @@ export function Dashboard({ analysis, onRefresh, refreshing }: { analysis: Analy
       <div key={tab} className="animate-page">
       {tab === "geral" && (
         <div className="space-y-6">
+          <div>
+            <p className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-widest text-white/50">
+              <Zap className="h-3.5 w-3.5 text-amber-300" /> Raio-X em 5 segundos
+            </p>
+            <InsightCards items={qual.destaques ?? []} />
+          </div>
+
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
-            <Stat label="Engajamento médio" value={pct(quant.avgEngagement)} hint={`mediana ${pct(quant.medianEngagement)}`} />
+            <Stat label="Engajamento típico" value={pct(quant.medianEngagement)} hint={`média ${pct(quant.avgEngagement)}`} />
             <Stat label="Curtidas por post" value={compact(quant.avgLikes)} hint={`${compact(quant.avgComments)} comentários`} />
             <Stat label="Views médias dos Reels" value={compact(quant.avgReelViews)} />
-            <Stat label="Views vs. seguidores" value={times(quant.reelsReachRatio)} hint="acima de 1x = chegou em gente de fora" />
+            <Stat label="Views vs. seguidores" value={times(quant.reelsReachRatio)} hint="acima de 1x = chegou em gente nova" />
             <Stat label="Furar a bolha" value={`${bubble.profileScore}`} hint={`potencial ${scoreLabel(bubble.profileScore).toLowerCase()}`} accent />
           </div>
 
           {analysis.privado ? <PrivatePanel data={analysis.privado} /> : <OptinCta />}
-
-          <Card>
-            <SectionTitle eyebrow="Resumo" title="O que a gente viu nesse perfil" />
-            <p className="text-[15px] leading-relaxed text-white/80">{qual.resumo}</p>
-          </Card>
 
           <div className="grid gap-6 lg:grid-cols-5">
             <Card className="lg:col-span-3">
@@ -134,151 +135,122 @@ export function Dashboard({ analysis, onRefresh, refreshing }: { analysis: Analy
 
           <div className="grid gap-6 lg:grid-cols-2">
             <Card>
-              <SectionTitle title="Melhores dias pra postar">Horário de Brasília</SectionTitle>
-              <WeekdayBars quant={quant} />
+              <SectionTitle eyebrow="Próximos passos" title="O que fazer agora" />
+              <Checklist items={qual.recomendacoes} />
             </Card>
             <Card>
-              <SectionTitle title="Hábitos de legenda" />
-              <div className="grid grid-cols-3 gap-3 text-center">
-                <div className="rounded-2xl bg-white/[0.05] p-3">
-                  <p className="text-xl font-extrabold">{quant.avgCaptionLength}</p>
-                  <p className="text-[11px] text-white/50">caracteres em média</p>
-                </div>
-                <div className="rounded-2xl bg-white/[0.05] p-3">
-                  <p className="text-xl font-extrabold">{quant.avgHashtags}</p>
-                  <p className="text-[11px] text-white/50">hashtags por post</p>
-                </div>
-                <div className="rounded-2xl bg-white/[0.05] p-3">
-                  <p className="text-xl font-extrabold">{pct(quant.ctaShare, 0)}</p>
-                  <p className="text-[11px] text-white/50">com chamada pra ação</p>
-                </div>
-              </div>
-              <div className="mt-5 space-y-3">
-                <Meter value={qual.qualidade.nota} label="Qualidade geral do conteúdo" />
-                <p className="text-sm text-white/65">{qual.qualidade.comentario}</p>
+              <SectionTitle title="Melhores dias pra postar">Horário de Brasília</SectionTitle>
+              <WeekdayBars quant={quant} />
+              <div className="mt-4 grid grid-cols-3 gap-2 text-center">
+                {[
+                  { v: `${quant.postsPerWeek.toLocaleString("pt-BR")}`, l: "posts/semana" },
+                  { v: pct(quant.ctaShare, 0), l: "com chamada pra ação" },
+                  { v: `${qual.qualidade.nota.toLocaleString("pt-BR")}/10`, l: "qualidade" },
+                ].map((x) => (
+                  <div key={x.l} className="rounded-2xl bg-white/[0.05] p-2.5">
+                    <p className="text-lg font-extrabold">{x.v}</p>
+                    <p className="text-[11px] text-white/50">{x.l}</p>
+                  </div>
+                ))}
               </div>
             </Card>
           </div>
 
-          <Card>
-            <SectionTitle eyebrow="Próximos passos" title="Recomendações" />
-            <div className="grid gap-3 md:grid-cols-2">
-              {qual.recomendacoes.map((r) => (
-                <div key={r.titulo} className="rounded-2xl bg-white/[0.04] p-4">
-                  <div className="mb-1 flex items-start justify-between gap-3">
-                    <p className="font-bold">{r.titulo}</p>
-                    <Badge tone={PRIORITY_TONE[r.prioridade]}>{r.prioridade}</Badge>
-                  </div>
-                  <p className="text-sm text-white/65">{r.detalhe}</p>
-                </div>
-              ))}
+          <details className="card group p-5 sm:p-6">
+            <summary className="flex cursor-pointer list-none items-center justify-between font-bold">
+              Ler a análise completa
+              <ChevronDown className="h-4 w-4 text-white/50 transition group-open:rotate-180" />
+            </summary>
+            <div className="mt-4 space-y-3 text-[15px] leading-relaxed text-white/75">
+              <p>{qual.resumo}</p>
+              <p>{qual.qualidade.comentario}</p>
+              <p>{qual.furarBolha.diagnostico}</p>
             </div>
-          </Card>
+          </details>
         </div>
       )}
 
       {tab === "conteudo" && <PostGrid analysis={analysis} />}
 
       {tab === "nicho" && (
-        <div className="grid gap-6 lg:grid-cols-2">
+        <div className="space-y-6">
           <Card>
-            <SectionTitle eyebrow="Nicho" title={qual.nicho.principal} />
-            <div className="mb-4 flex flex-wrap gap-2">
-              {qual.nicho.subnichos.map((s) => (
-                <Badge key={s}>{s}</Badge>
-              ))}
-            </div>
-            <Meter value={qual.nicho.clareza} label="Clareza do nicho" />
-            <p className="mt-3 text-sm text-white/65">{qual.nicho.comentario}</p>
-          </Card>
-          <Card>
-            <SectionTitle eyebrow="Posicionamento" title="Como o perfil se apresenta" />
-            <dl className="space-y-3 text-sm">
+            <div className="grid gap-6 md:grid-cols-[1.2fr_1fr]">
               <div>
-                <dt className="text-xs font-semibold uppercase tracking-wider text-white/45">Proposta</dt>
-                <dd className="mt-0.5 text-white/85">{qual.posicionamento.proposta}</dd>
-              </div>
-              <div>
-                <dt className="text-xs font-semibold uppercase tracking-wider text-white/45">Público</dt>
-                <dd className="mt-0.5 text-white/85">{qual.posicionamento.publico}</dd>
-              </div>
-              <div>
-                <dt className="text-xs font-semibold uppercase tracking-wider text-white/45">Tom de voz</dt>
-                <dd className="mt-0.5 text-white/85">{qual.posicionamento.tom}</dd>
-              </div>
-            </dl>
-          </Card>
-          <Card>
-            <SectionTitle title="Diferenciais" />
-            <List items={qual.posicionamento.diferenciais} icon="✦" />
-          </Card>
-          <Card>
-            <SectionTitle title="Pontos de atenção" />
-            <List items={qual.posicionamento.pontosFracos} icon="!" />
-          </Card>
-          <Card className="lg:col-span-2">
-            <SectionTitle title="Temas mais falados">Quanto cada tema aparece e como ele performa</SectionTitle>
-            <div className="space-y-4">
-              {qual.temas.map((t) => (
-                <div key={t.nome}>
-                  <div className="mb-1.5 flex items-center justify-between gap-3">
-                    <p className="font-semibold">{t.nome}</p>
-                    <div className="flex items-center gap-2">
-                      <Badge tone={PERF_TONE[t.desempenho]}>{t.desempenho === "na média" ? "na média" : `${t.desempenho} da média`}</Badge>
-                      <span className="w-10 text-right text-sm font-bold">{t.percentual}%</span>
-                    </div>
-                  </div>
-                  <div className="h-2 overflow-hidden rounded-full bg-white/[0.07]">
-                    <div className="h-full rounded-full bg-sunset" style={{ width: `${Math.min(100, t.percentual)}%` }} />
-                  </div>
-                  <p className="mt-1 text-xs text-white/50">{t.comentario}</p>
+                <p className="text-xs font-semibold uppercase tracking-widest text-white/50">Nicho</p>
+                <h2 className="mt-1 text-2xl font-extrabold leading-tight">{qual.nicho.principal}</h2>
+                <div className="mt-3">
+                  <Chips items={qual.nicho.subnichos} />
                 </div>
-              ))}
+                <p className="mt-4 text-xs font-semibold uppercase tracking-widest text-white/50">Proposta</p>
+                <p className="mt-1 font-semibold text-white/90">{qual.posicionamento.proposta}</p>
+              </div>
+              <div className="space-y-4">
+                <Meter value={qual.nicho.clareza} label="Clareza do nicho" />
+                <div>
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-white/50">Fala com</p>
+                  <p className="text-sm text-white/85">{qual.posicionamento.publico}</p>
+                </div>
+                <div>
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-white/50">Tom de voz</p>
+                  <Chips items={qual.posicionamento.tom.split(/,| e /).map((t) => t.trim()).filter(Boolean)} />
+                </div>
+              </div>
             </div>
           </Card>
+
+          <Card>
+            <SectionTitle title="Mapa de temas">Cada bolinha é um tema. Quanto mais pra direita, mais aparece. Quanto mais pra cima, mais engaja.</SectionTitle>
+            <ThemeMatrix analysis={analysis} />
+          </Card>
+
+          <div className="grid gap-6 lg:grid-cols-2">
+            <Card>
+              <SectionTitle title="Diferenciais" />
+              <Chips items={qual.posicionamento.diferenciais} tone="good" />
+            </Card>
+            <Card>
+              <SectionTitle title="Pontos de atenção" />
+              <Chips items={qual.posicionamento.pontosFracos} tone="bad" />
+            </Card>
+          </div>
         </div>
       )}
 
       {tab === "hooks" && (
         <div className="grid gap-6 lg:grid-cols-3">
-          <Card className="lg:col-span-1">
-            <SectionTitle eyebrow="Hooks" title="Nota dos ganchos" />
-            <div className="flex justify-center py-2">
-              <ScoreRing score={Math.round(qual.hooks.nota * 10)} label="de 100" />
-            </div>
-            <p className="mt-3 text-center text-sm text-white/55">Força média das primeiras frases, que seguram (ou não) as pessoas no começo.</p>
-          </Card>
           <Card className="lg:col-span-2">
-            <SectionTitle title="Padrões de hook">Do que mais rende pro que menos rende</SectionTitle>
-            <div className="space-y-3">
-              {qual.hooks.padroes.map((p) => (
-                <div key={p.tipo} className="rounded-2xl bg-white/[0.04] p-4">
-                  <p className="font-bold">{p.tipo}</p>
-                  <p className="mt-1 text-sm italic text-white/75">&ldquo;{p.exemplo}&rdquo;</p>
-                  <p className="mt-1 text-xs text-white/50">{p.efetividade}</p>
+            <SectionTitle eyebrow="Hooks" title="Qual gancho rende mais" />
+            <HookRanking analysis={analysis} />
+          </Card>
+          <div className="space-y-6">
+            <Card>
+              <div className="flex items-center gap-4">
+                <ScoreRing score={Math.round(qual.hooks.nota * 10)} size={110} />
+                <div>
+                  <p className="font-bold">Força dos hooks</p>
+                  <p className="mt-1 text-sm text-white/55">O quanto as primeiras frases seguram a pessoa.</p>
                 </div>
-              ))}
-            </div>
-          </Card>
-          <Card className="lg:col-span-3">
-            <SectionTitle title="Como melhorar os hooks" />
-            <List items={qual.hooks.sugestoes} icon="→" />
-          </Card>
-          <Card className="lg:col-span-3">
-            <SectionTitle eyebrow="Narrativas" title="As histórias que o perfil conta" />
-            {qual.narrativas.length ? (
-              <div className="grid gap-3 md:grid-cols-2">
+              </div>
+            </Card>
+            <Card>
+              <SectionTitle title="Como melhorar" />
+              <Chips items={qual.hooks.sugestoes} />
+            </Card>
+          </div>
+          {qual.narrativas.length > 0 && (
+            <Card className="lg:col-span-3">
+              <SectionTitle eyebrow="Narrativas" title="As histórias que o perfil conta" />
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 {qual.narrativas.map((n) => (
                   <div key={n.nome} className="rounded-2xl bg-white/[0.04] p-4">
                     <p className="font-bold">{n.nome}</p>
-                    <p className="mt-1 text-sm text-white/65">{n.descricao}</p>
+                    <p className="mt-1 text-sm text-white/60">{n.descricao}</p>
                   </div>
                 ))}
               </div>
-            ) : (
-              <p className="text-sm text-white/50">A leitura de narrativas precisa da análise com IA.</p>
-            )}
-          </Card>
+            </Card>
+          )}
         </div>
       )}
 
@@ -286,39 +258,39 @@ export function Dashboard({ analysis, onRefresh, refreshing }: { analysis: Analy
         <div className="space-y-6">
           <Card>
             <div className="flex flex-col items-center gap-6 md:flex-row">
-              <ScoreRing score={bubble.profileScore} size={170} label={scoreLabel(bubble.profileScore)} />
-              <div className="flex-1">
-                <p className="text-xs font-semibold uppercase tracking-widest text-white/50">Potencial de furar a bolha</p>
-                <p className="mt-2 text-[15px] leading-relaxed text-white/85">{qual.furarBolha.diagnostico}</p>
-                {analysis.privado?.nonFollowerShare != null && (
-                  <p className="mt-3 inline-flex rounded-full bg-sunset px-3 py-1 text-sm font-bold">
-                    {pct(analysis.privado.nonFollowerShare, 0)} do alcance dos últimos 28 dias veio de quem não segue
-                  </p>
-                )}
-                <p className="mt-3 text-xs text-white/45">
-                  A nota junta views vs. seguidores, desempenho vs. média, potencial de envio por DM, força do hook e formato. Os pesos seguem o que a
-                  Meta já disse publicamente.{" "}
-                  <Link href="/algoritmo" className="inline-flex items-center font-semibold text-white/70 underline-offset-2 hover:underline">
-                    Ver as fontes <ArrowUpRight className="h-3 w-3" />
-                  </Link>
-                </p>
+              <ScoreRing score={bubble.profileScore} size={150} label={scoreLabel(bubble.profileScore)} />
+              <div className="flex-1 space-y-4">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-widest text-white/50">Potencial de furar a bolha</p>
+                  {analysis.privado?.nonFollowerShare != null && (
+                    <p className="mt-2 inline-flex rounded-full bg-sunset px-3 py-1 text-sm font-bold">
+                      {pct(analysis.privado.nonFollowerShare, 0)} do alcance veio de quem não segue
+                    </p>
+                  )}
+                </div>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div>
+                    <p className="mb-2 text-sm font-bold text-emerald-300">Funciona</p>
+                    <Chips items={qual.furarBolha.oQueFunciona} tone="good" />
+                  </div>
+                  <div>
+                    <p className="mb-2 text-sm font-bold text-rose-300">Evitar</p>
+                    <Chips items={qual.furarBolha.oQueEvitar} tone="bad" />
+                  </div>
+                </div>
+                <Link href="/algoritmo" className="inline-flex items-center text-xs font-semibold text-white/50 hover:text-white">
+                  Como a nota é calculada <ArrowUpRight className="h-3 w-3" />
+                </Link>
               </div>
             </div>
           </Card>
 
-          <div className="grid gap-6 lg:grid-cols-2">
-            <Card>
-              <SectionTitle title="O que tá funcionando" />
-              <List items={qual.furarBolha.oQueFunciona} icon="✓" />
-            </Card>
-            <Card>
-              <SectionTitle title="O que evitar" />
-              <List items={qual.furarBolha.oQueEvitar} icon="✕" />
-            </Card>
-          </div>
+          <Card>
+            <NicheRadar analysis={analysis} />
+          </Card>
 
           <Card>
-            <SectionTitle title="Posts com mais potencial">Os que têm mais cara de chegar em gente nova</SectionTitle>
+            <SectionTitle title="Posts desse perfil com mais potencial" />
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
               {bubble.topIds.map((id) => {
                 const p = analysis.posts.find((x) => x.id === id)!;
@@ -340,7 +312,7 @@ export function Dashboard({ analysis, onRefresh, refreshing }: { analysis: Analy
 
           {qual.furarBolha.ideias.length > 0 && (
             <Card>
-              <SectionTitle eyebrow="Ideias" title="Conteúdos pra testar e chegar em gente nova" />
+              <SectionTitle eyebrow="Ideias" title="Pra testar e chegar em gente nova" />
               <div className="grid gap-3 md:grid-cols-2">
                 {qual.furarBolha.ideias.map((i) => (
                   <div key={i.titulo} className="rounded-2xl bg-white/[0.04] p-4">
@@ -351,8 +323,8 @@ export function Dashboard({ analysis, onRefresh, refreshing }: { analysis: Analy
                       </p>
                       <Badge>{i.formato}</Badge>
                     </div>
-                    <p className="text-sm font-semibold text-white/90">&ldquo;{i.hook}&rdquo;</p>
-                    <p className="mt-1 text-sm text-white/60">{i.porque}</p>
+                    <p className="text-[15px] font-semibold text-pink-100">&ldquo;{i.hook}&rdquo;</p>
+                    <p className="mt-1 text-sm text-white/55">{i.porque}</p>
                   </div>
                 ))}
               </div>

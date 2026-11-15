@@ -26,7 +26,8 @@ export default function RadarPage() {
   }, []);
 
   useEffect(() => {
-    loadCats().then((list) => setActive((a) => a || list[0]?.id || ""));
+    const fromUrl = new URLSearchParams(window.location.search).get("c");
+    loadCats().then((list) => setActive((a) => a || (fromUrl && list.some((c) => c.id === fromUrl) ? fromUrl : list[0]?.id) || ""));
   }, [loadCats]);
 
   const load = useCallback(async (id: string, refresh = false) => {

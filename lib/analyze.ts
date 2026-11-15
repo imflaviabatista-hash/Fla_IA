@@ -1,4 +1,5 @@
 import { kvGet, kvSet } from "./kv";
+import { getCategories } from "./trends";
 import { analyzeQualitative } from "./ai";
 import { computeBubble } from "./algorithm";
 import { demoAccount, demoData, isDemoHandle } from "./demo";
@@ -92,7 +93,7 @@ export async function runAnalysis(rawHandle: string): Promise<Analysis> {
   if (quant.hiddenLikesShare > 30)
     warnings.push(`${quant.hiddenLikesShare}% dos posts escondem as curtidas. O engajamento desses posts conta só os comentários.`);
 
-  const { qual, warning } = await analyzeQualitative(profile, posts, quant);
+  const { qual, warning } = await analyzeQualitative(profile, posts, quant, await getCategories());
   if (warning) warnings.push(warning);
 
   const bubble = computeBubble(posts, quant, qual, profile.followers);

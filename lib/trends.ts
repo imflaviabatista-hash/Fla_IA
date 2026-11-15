@@ -1,5 +1,5 @@
 import { kvDel, kvGet, kvSet } from "./kv";
-import { hookType } from "./ai";
+import { hookType } from "./hooks";
 import { fetchHashtagTop, fetchInstagramProfile, instagramConfigured } from "./instagram";
 import { warmImages } from "./media";
 import { firstLine } from "./metrics";
