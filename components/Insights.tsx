@@ -3,7 +3,7 @@
 import { AlertTriangle, ArrowUpRight, Check, ChevronDown, Flame, Lightbulb, Sparkles, TrendingUp, X } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { CartesianGrid, LabelList, ReferenceLine, ResponsiveContainer, Scatter, ScatterChart, Tooltip, XAxis, YAxis } from "recharts";
+import { CartesianGrid, ReferenceArea, ReferenceLine, ResponsiveContainer, Scatter, ScatterChart, Tooltip, XAxis, YAxis } from "recharts";
 import { FORMAT_LABEL, pct } from "@/lib/format";
 import { hookType } from "@/lib/hooks";
 import { firstLine } from "@/lib/metrics";
@@ -67,74 +67,137 @@ function themeStats(a: Analysis) {
   });
 }
 
-export function ThemeMatrix({ analysis }: { analysis: Analysis }) {
-  const data = useMemo(() => themeStats(analysis), [analysis]);
-  if (!data.length) return null;
-  const xMid = 100 / data.length;
-  const yMax = Math.max(2, ...data.map((d) => d.perf)) * 1.15;
-  const xMax = Math.max(40, ...data.map((d) => d.share)) * 1.15;
+const QUAD = {
+  forte: { label: "Seu forte", color: "#34d399", chip: "bg-emerald-400/15 text-emerald-300", tint: "rgba(52,211,153,0.06)" },
+  aposte: { label: "Aposte mais", color: "#ff4f8b", chip: "bg-pink-400/15 text-pink-300", tint: "rgba(255,79,139,0.06)" },
+  repense: { label: "Repense", color: "#fbbf24", chip: "bg-amber-400/15 text-amber-300", tint: "rgba(251,191,36,0.05)" },
+  deixe: { label: "Deixe de lado", color: "#8b8a99", chip: "bg-white/10 text-white/60", tint: "rgba(255,255,255,0.02)" },
+} as const;
+type Quad = keyof typeof QUAD;
+const QUAD_ORDER: Quad[] = ["forte", "aposte", "repense", "deixe"];
 
-  const corner = "pointer-events-none absolute text-[11px] font-bold uppercase tracking-wider";
+export function ThemeMatrix({ analysis }: { analysis: Analysis }) {
+  const [hover, setHover] = useState<number | null>(null);
+  const raw = useMemo(() => themeStats(analysis), [analysis]);
+  const xMid = raw.length ? 100 / raw.length : 0;
+  const data = useMemo(
+    () =>
+      raw
+        .map((d) => ({ ...d, quad: (d.perf >= 1 ? (d.share >= xMid ? "forte" : "aposte") : d.share >= xMid ? "repense" : "deixe") as Quad }))
+        .sort((a, b) => QUAD_ORDER.indexOf(a.quad) - QUAD_ORDER.indexOf(b.quad) || b.perf - a.perf)
+        .map((d, i) => ({ ...d, n: i + 1 })),
+    [raw, xMid],
+  );
+  if (!data.length) return null;
+
+  const yTop = Math.max(2, ...data.map((d) => d.perf)) * 1.12;
+  const xTop = Math.ceil(Math.max(30, ...data.map((d) => d.share)) * 1.12);
+  const yTicks = [0, 0.5, 1, 2, 4, 8, 16].filter((t) => t <= yTop);
+
   return (
-    <div>
-      <div className="relative h-80">
-        <span className={`${corner} left-14 top-1 text-pink-300/80`}>Aposte mais</span>
-        <span className={`${corner} right-3 top-1 text-emerald-300/80`}>Seu forte</span>
-        <span className={`${corner} bottom-9 right-3 text-amber-300/80`}>Repense</span>
-        <span className={`${corner} bottom-9 left-14 text-white/35`}>Deixe de lado</span>
-        <ResponsiveContainer width="100%" height="100%">
-          <ScatterChart margin={{ top: 22, right: 16, bottom: 8, left: -8 }}>
-            <CartesianGrid stroke="rgba(255,255,255,0.06)" />
-            <XAxis
-              type="number"
-              dataKey="share"
-              domain={[0, Math.ceil(xMax)]}
-              tick={{ fill: "rgba(255,255,255,0.5)", fontSize: 11 }}
-              tickFormatter={(v) => `${v}%`}
-              tickLine={false}
-              axisLine={false}
-              label={{ value: "quanto você posta", position: "insideBottom", offset: -4, fill: "rgba(255,255,255,0.45)", fontSize: 11 }}
-            />
-            <YAxis
-              type="number"
-              dataKey="perf"
-              domain={[0, Math.ceil(yMax * 10) / 10]}
-              tick={{ fill: "rgba(255,255,255,0.5)", fontSize: 11 }}
-              tickFormatter={(v) => `${br(v)}x`}
-              tickLine={false}
-              axisLine={false}
-            />
-            <ReferenceLine x={xMid} stroke="rgba(255,255,255,0.25)" strokeDasharray="4 4" />
-            <ReferenceLine y={1} stroke="rgba(255,255,255,0.25)" strokeDasharray="4 4" />
-            <Tooltip
-              cursor={false}
-              content={({ active, payload }) => {
-                if (!active || !payload?.length) return null;
-                const d = payload[0].payload as (typeof data)[number];
-                return (
-                  <div className="max-w-60 rounded-xl border border-white/10 bg-ink-3/95 px-3 py-2 text-xs shadow-xl">
-                    <p className="font-semibold text-white">{d.nome}</p>
-                    <p className="text-white/70">
-                      {d.share}% dos posts · {br(d.perf)}x o engajamento típico
-                    </p>
-                    {d.comentario && <p className="mt-1 text-white/55">{d.comentario}</p>}
-                  </div>
-                );
-              }}
-            />
-            <Scatter
-              data={data}
-              isAnimationActive={false}
-              shape={(props: { cx?: number; cy?: number }) => <circle cx={props.cx} cy={props.cy} r={9} fill="#ff4f8b" stroke="#0a0a12" strokeWidth={2} />}
-            >
-              <LabelList dataKey="nome" position="top" offset={10} fill="rgba(255,255,255,0.85)" fontSize={11} />
-            </Scatter>
-          </ScatterChart>
-        </ResponsiveContainer>
+    <div className="grid gap-6 lg:grid-cols-[1.4fr_1fr]">
+      <div>
+        <div className="h-80 sm:h-96">
+          <ResponsiveContainer width="100%" height="100%">
+            <ScatterChart margin={{ top: 10, right: 12, bottom: 18, left: -10 }}>
+              <ReferenceArea x1={xMid} x2={xTop} y1={1} y2={yTop} fill={QUAD.forte.tint} stroke="none" ifOverflow="hidden" />
+              <ReferenceArea x1={0} x2={xMid} y1={1} y2={yTop} fill={QUAD.aposte.tint} stroke="none" ifOverflow="hidden" />
+              <ReferenceArea x1={xMid} x2={xTop} y1={0} y2={1} fill={QUAD.repense.tint} stroke="none" ifOverflow="hidden" />
+              <ReferenceArea x1={0} x2={xMid} y1={0} y2={1} fill={QUAD.deixe.tint} stroke="none" ifOverflow="hidden" />
+              <CartesianGrid stroke="rgba(255,255,255,0.05)" />
+              <XAxis
+                type="number"
+                dataKey="share"
+                domain={[0, xTop]}
+                tick={{ fill: "rgba(255,255,255,0.5)", fontSize: 11 }}
+                tickFormatter={(v) => `${v}%`}
+                tickLine={false}
+                axisLine={false}
+                label={{ value: "quanto o tema aparece →", position: "insideBottom", offset: -12, fill: "rgba(255,255,255,0.45)", fontSize: 11 }}
+              />
+              <YAxis
+                type="number"
+                dataKey="perf"
+                scale="sqrt"
+                domain={[0, yTop]}
+                ticks={yTicks}
+                tick={{ fill: "rgba(255,255,255,0.5)", fontSize: 11 }}
+                tickFormatter={(v) => `${br(v)}x`}
+                tickLine={false}
+                axisLine={false}
+              />
+              <ReferenceLine x={xMid} stroke="rgba(255,255,255,0.22)" strokeDasharray="4 4" />
+              <ReferenceLine y={1} stroke="rgba(255,255,255,0.22)" strokeDasharray="4 4" />
+              <Tooltip
+                cursor={false}
+                content={({ active, payload }) => {
+                  if (!active || !payload?.length) return null;
+                  const d = payload[0].payload as (typeof data)[number];
+                  return (
+                    <div className="max-w-64 rounded-xl border border-white/10 bg-ink-3/95 px-3 py-2 text-xs shadow-xl">
+                      <p className="font-semibold text-white">
+                        {d.n}. {d.nome}
+                      </p>
+                      <p className="text-white/70">
+                        {d.share}% dos posts · {br(d.perf)}x o engajamento típico
+                      </p>
+                      {d.comentario && <p className="mt-1 text-white/55">{d.comentario}</p>}
+                    </div>
+                  );
+                }}
+              />
+              <Scatter
+                data={data}
+                isAnimationActive={false}
+                onMouseEnter={(_: unknown, i: number) => setHover(data[i]?.n ?? null)}
+                onMouseLeave={() => setHover(null)}
+                shape={(props: { cx?: number; cy?: number; payload?: (typeof data)[number] }) => {
+                  const d = props.payload!;
+                  const on = hover === d.n;
+                  const dim = hover != null && !on;
+                  return (
+                    <g style={{ cursor: "pointer", opacity: dim ? 0.35 : 1, transition: "opacity .15s" }}>
+                      <circle cx={props.cx} cy={props.cy} r={on ? 15 : 12} fill={QUAD[d.quad].color} stroke="#0a0a12" strokeWidth={2} />
+                      <text x={props.cx} y={props.cy} dy={4} textAnchor="middle" fontSize={11} fontWeight={800} fill="#0a0a12">
+                        {d.n}
+                      </text>
+                    </g>
+                  );
+                }}
+              />
+            </ScatterChart>
+          </ResponsiveContainer>
+        </div>
+        <p className="mt-1 text-xs text-white/40">
+          Altura: engajamento típico do tema comparado ao do perfil (1x = igual). Linha vertical: a fatia que cada tema teria se fosse tudo igual.
+        </p>
       </div>
-      <p className="mt-2 text-xs text-white/45">
-        Eixo vertical: engajamento típico dos posts do tema comparado ao do perfil (1x = igual). Linha vertical: a fatia que cada tema teria se fosse tudo igual.
-      </p>
+
+      <ul className="space-y-1.5">
+        {data.map((d) => (
+          <li key={d.nome}>
+            <div
+              onMouseEnter={() => setHover(d.n)}
+              onMouseLeave={() => setHover(null)}
+              className={`flex items-center gap-3 rounded-2xl px-3 py-2.5 transition ${hover === d.n ? "bg-white/[0.08]" : "bg-white/[0.03]"}`}
+            >
+              <span
+                className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-xs font-extrabold text-ink"
+                style={{ background: QUAD[d.quad].color }}
+              >
+                {d.n}
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-semibold">{d.nome}</p>
+                <p className="text-xs text-white/50">
+                  {d.share}% dos posts · <b className={d.perf >= 1 ? "text-white/85" : ""}>{br(d.perf)}x</b> o típico
+                </p>
+              </div>
+              <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-bold ${QUAD[d.quad].chip}`}>{QUAD[d.quad].label}</span>
+            </div>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }

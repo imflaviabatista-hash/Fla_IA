@@ -200,7 +200,7 @@ export function Dashboard({ analysis, onRefresh, refreshing }: { analysis: Analy
           </Card>
 
           <Card>
-            <SectionTitle title="Mapa de temas">Cada bolinha é um tema. Quanto mais pra direita, mais aparece. Quanto mais pra cima, mais engaja.</SectionTitle>
+            <SectionTitle title="Mapa de temas">Do que o perfil fala e o que realmente engaja. Passe o mouse pra ver os detalhes.</SectionTitle>
             <ThemeMatrix analysis={analysis} />
           </Card>
 
