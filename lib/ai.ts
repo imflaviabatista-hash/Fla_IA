@@ -501,7 +501,9 @@ export async function analyzeQualitative(
   } catch (err) {
     console.error("analise com IA", err);
     const msg =
-      err instanceof Anthropic.AuthenticationError
+      err instanceof Anthropic.APIError && /credit balance/i.test(String(err.message))
+        ? "Acabaram os créditos da Anthropic. Coloque saldo em platform.claude.com, na parte de Billing."
+        : err instanceof Anthropic.AuthenticationError
         ? "A chave da Anthropic é inválida."
         : err instanceof Anthropic.RateLimitError
           ? "Limite da Anthropic atingido."

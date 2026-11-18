@@ -34,7 +34,9 @@ export async function POST(req: Request) {
   } catch (err) {
     console.error("monetização", err);
     const msg =
-      err instanceof Anthropic.RateLimitError
+      err instanceof Anthropic.APIError && /credit balance/i.test(String(err.message))
+        ? "Acabaram os créditos da Anthropic. Coloque saldo em platform.claude.com, na parte de Billing, e tente de novo."
+        : err instanceof Anthropic.RateLimitError
         ? "Limite da Anthropic atingido. Espera um pouco e tenta de novo."
         : err instanceof Anthropic.APIError
           ? `Erro da Anthropic (${err.status}): ${String(err.message).slice(0, 200)}`
