@@ -7,6 +7,7 @@ import { FORMAT_LABEL, compact, pct, scoreLabel, times } from "@/lib/format";
 import type { Analysis } from "@/lib/types";
 import { EngagementTimeline, FormatBars, WeekdayBars } from "./charts";
 import { Checklist, Chips, HookRanking, InsightCards, NicheRadar, ThemeMatrix } from "./Insights";
+import { MonetizacaoSections, useMonet, withMonetStep } from "./Monetizacao";
 import { proxied } from "./Media";
 import { OptinCta, PrivatePanel } from "./PrivatePanel";
 import { PostGrid, Thumb } from "./PostGrid";
@@ -25,6 +26,7 @@ type Tab = (typeof TABS)[number]["id"];
 export function Dashboard({ analysis, onRefresh, refreshing }: { analysis: Analysis; onRefresh: () => void; refreshing: boolean }) {
   const [tab, setTab] = useState<Tab>("geral");
   const { profile, quant, qual, bubble } = analysis;
+  const monet = useMonet(analysis);
 
   return (
     <div className="mx-auto max-w-6xl px-4 pb-20 sm:px-6">
@@ -133,15 +135,13 @@ export function Dashboard({ analysis, onRefresh, refreshing }: { analysis: Analy
             </Card>
           </div>
 
-          <div className="grid gap-6 lg:grid-cols-2">
-            <Card>
-              <SectionTitle eyebrow="Próximos passos" title="O que fazer agora" />
-              <Checklist items={qual.recomendacoes} />
-            </Card>
-            <Card>
-              <SectionTitle title="Melhores dias pra postar">Horário de Brasília</SectionTitle>
-              <WeekdayBars quant={quant} />
-              <div className="mt-4 grid grid-cols-3 gap-2 text-center">
+          <Card>
+            <div className="grid gap-6 lg:grid-cols-[1.4fr_1fr] lg:items-center">
+              <div>
+                <SectionTitle title="Melhores dias pra postar">Horário de Brasília</SectionTitle>
+                <WeekdayBars quant={quant} />
+              </div>
+              <div className="grid grid-cols-3 gap-2 text-center lg:grid-cols-1">
                 {[
                   { v: `${quant.postsPerWeek.toLocaleString("pt-BR")}`, l: "posts/semana" },
                   { v: pct(quant.ctaShare, 0), l: "com chamada pra ação" },
@@ -153,8 +153,15 @@ export function Dashboard({ analysis, onRefresh, refreshing }: { analysis: Analy
                   </div>
                 ))}
               </div>
-            </Card>
-          </div>
+            </div>
+          </Card>
+
+          <MonetizacaoSections analysis={analysis} monet={monet} />
+
+          <Card>
+            <SectionTitle eyebrow="Próximos passos" title="O que fazer agora" />
+            <Checklist items={withMonetStep(qual.recomendacoes, monet.data)} />
+          </Card>
 
           <details className="card group p-5 sm:p-6">
             <summary className="flex cursor-pointer list-none items-center justify-between font-bold">

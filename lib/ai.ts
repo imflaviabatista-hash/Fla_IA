@@ -107,7 +107,7 @@ Como preencher:
 - temas: de 3 a 7 temas, com nomes curtos (até 4 palavras), com o percentual aproximado de posts de cada um (soma perto de 100). "desempenho" compara o engajamento dos posts daquele tema com a média do perfil.
 - posts: um item pra CADA post recebido, usando exatamente o mesmo id. O campo "tema" de cada post precisa ser exatamente um dos nomes em temas. forcaHook (0 a 10) estima o quanto a abertura segura a pessoa nos primeiros segundos. potencialEnvio (0 a 10) estima a chance de alguém mandar o post por DM pra um amigo. riscoRecomendacao fica null, a não ser que o post tenha algo que as diretrizes de recomendação penalizam (isca de engajamento, repost/conteúdo não original, baixa qualidade, tema sensível). "leitura" explica em uma frase por que o post foi bem ou mal.
 - furarBolha.ideias: de 3 a 5 ideias de conteúdo concretas pra esse perfil chegar em gente nova, com o hook já escrito.
-- recomendacoes: de 4 a 6, ordenadas da mais importante pra menos.`;
+- recomendacoes: de 4 a 6, ordenadas da mais importante pra menos. Pelo menos uma precisa ser um passo de monetização (publi, permuta, afiliados ou mídia kit) baseado nos dados do perfil.`;
 
 function buildPrompt(profile: Profile, posts: Post[], quant: Quantitative, categories: RadarCategory[]) {
   const lines = posts.map((p) => {
@@ -232,7 +232,7 @@ const LenientSchema = z.object({
 });
 
 /** Pega o JSON da resposta, mesmo se vier dentro de um bloco de código. */
-function extractJson(text: string): unknown {
+export function extractJson(text: string): unknown {
   const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/);
   const raw = fenced ? fenced[1] : text.slice(text.indexOf("{"), text.lastIndexOf("}") + 1);
   return JSON.parse(raw);

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { use, useEffect, useRef, useState, type ReactNode } from "react";
 import { Loading } from "@/components/Loading";
 import { proxied } from "@/components/Media";
+import { mediaKitNumbers, useMonet, withMonetStep, type MonetState } from "@/components/Monetizacao";
 import { Thumb } from "@/components/PostGrid";
 import { Avatar, ScoreRing } from "@/components/ui";
 import { useAnalysis } from "@/components/useAnalysis";
@@ -39,7 +40,7 @@ function H({ eyebrow, children }: { eyebrow: string; children: ReactNode }) {
   );
 }
 
-function buildSlides(a: Analysis): ReactNode[] {
+function buildSlides(a: Analysis, monet: MonetState): ReactNode[] {
   const { profile, quant, qual, bubble } = a;
   const date = new Date(a.createdAt).toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" });
   const maxFmt = Math.max(...quant.byFormat.map((f) => f.avgEngagement), 0.01);
@@ -319,11 +320,111 @@ function buildSlides(a: Analysis): ReactNode[] {
         ]
       : []),
 
+    // 9b. Monetização
+    ...(monet.marcas
+      ? [
+          <div key="marcas">
+            <H eyebrow="Monetização · marcas com sinergia">Quem combina com você</H>
+            <div className="grid grid-cols-3 gap-5">
+              {(
+                [
+                  ["Locais", monet.marcas.data.locais],
+                  ["Nacionais acessíveis", monet.marcas.data.nacionais],
+                  ["Marcas sonho", monet.marcas.data.sonho],
+                ] as const
+              ).map(([t, list]) => (
+                <div key={t} className="rounded-3xl border border-white/10 bg-white/[0.04] p-6">
+                  <p className="text-sm font-bold uppercase tracking-wider text-pink-300">{t}</p>
+                  <div className="mt-3 space-y-3">
+                    {list.slice(0, 4).map((m) => (
+                      <div key={m.nome}>
+                        <p className="text-xl font-bold">
+                          {m.nome}
+                          {m.jaTrabalhou && <span className="ml-2 text-sm text-emerald-300">já marcou</span>}
+                        </p>
+                        <p className="line-clamp-2 text-base text-white/55">{m.porque}</p>
+                      </div>
+                    ))}
+                    {!list.length && <p className="text-base text-white/40">Nenhuma confirmada.</p>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>,
+        ]
+      : []),
+    ...(monet.afiliados
+      ? [
+          <div key="afiliados">
+            <H eyebrow="Monetização · permuta e afiliados">Onde se cadastrar</H>
+            <div className="grid grid-cols-2 gap-4">
+              {monet.afiliados.data.programas.slice(0, 6).map((p) => (
+                <div key={p.nome} className="rounded-3xl border border-white/10 bg-white/[0.04] p-5">
+                  <div className="flex items-baseline justify-between gap-3">
+                    <p className="text-2xl font-bold">{p.nome}</p>
+                    <p className="shrink-0 text-sm text-white/50">perfis pequenos: {p.aceitaPequenos || "não informado"}</p>
+                  </div>
+                  <p className="mt-1 line-clamp-2 text-lg text-white/65">{p.beneficio || p.oQueE}</p>
+                </div>
+              ))}
+            </div>
+            <p className="mt-5 text-base text-white/40">Consultado em {new Date(monet.afiliados.consultadoEm).toLocaleDateString("pt-BR")}. Links oficiais no dashboard.</p>
+          </div>,
+        ]
+      : []),
+    ...(monet.publis
+      ? [
+          <div key="publis">
+            <H eyebrow="Monetização · publis">Seu mídia kit e quanto cobrar</H>
+            <div className="grid grid-cols-[1.3fr_1fr] gap-8">
+              <div className="grid grid-cols-2 gap-4">
+                {mediaKitNumbers(a, monet.publis.ctx.melhorPubli)
+                  .slice(0, 6)
+                  .map((k) => (
+                    <div key={k.label} className="rounded-3xl border border-white/10 bg-white/[0.04] p-5">
+                      <p className="text-4xl font-extrabold tracking-tight">{k.value}</p>
+                      <p className="mt-1 text-base text-white/55">{k.label}</p>
+                    </div>
+                  ))}
+              </div>
+              <div>
+                <p className="text-base font-bold uppercase tracking-wider text-white/45">Referência de preço</p>
+                <p className="text-gradient mt-2 text-4xl font-extrabold leading-tight">{monet.publis.data.preco.faixa || "Sem referência confirmada"}</p>
+                <p className="mt-3 text-lg text-white/70">{monet.publis.data.preco.argumento}</p>
+                <p className="mt-3 text-base text-amber-200/80">{monet.publis.data.preco.aviso}</p>
+              </div>
+            </div>
+          </div>,
+          <div key="abordagem">
+            <H eyebrow="Monetização · publis">Como abordar uma marca</H>
+            <div className="grid grid-cols-2 gap-8">
+              <div className="whitespace-pre-line rounded-[2rem] rounded-bl-md bg-gradient-to-br from-pink-500/25 to-purple-500/20 p-7 text-xl leading-relaxed">
+                {monet.publis.data.abordagem.dm}
+              </div>
+              <div className="space-y-4 text-xl">
+                {monet.publis.data.abordagem.caseResumo && (
+                  <p>
+                    <b className="text-emerald-300">Seu case: </b>
+                    {monet.publis.data.abordagem.caseResumo}
+                  </p>
+                )}
+                <p className="text-lg font-bold text-white/60">Sempre sinalize a publi</p>
+                {monet.publis.data.regras.pontos.slice(0, 3).map((x) => (
+                  <p key={x} className="text-lg text-white/70">
+                    ✓ {x}
+                  </p>
+                ))}
+              </div>
+            </div>
+          </div>,
+        ]
+      : []),
+
     // 10. Recomendações
     <div key="recs">
       <H eyebrow="Próximos passos">Recomendações</H>
       <div className="space-y-4">
-        {qual.recomendacoes.slice(0, 5).map((r, i) => (
+        {withMonetStep(qual.recomendacoes, monet).slice(0, 5).map((r, i) => (
           <div key={r.titulo} className="flex gap-5">
             <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-sunset text-xl font-extrabold">{i + 1}</span>
             <div>
@@ -355,11 +456,17 @@ function buildSlides(a: Analysis): ReactNode[] {
 export default function ApresentacaoPage({ params }: { params: Promise<{ handle: string }> }) {
   const { handle } = use(params);
   const { data } = useAnalysis(handle);
+  if (!data) return <Loading handle={handle} />;
+  return <Deck data={data} handle={handle} />;
+}
+
+function Deck({ data, handle }: { data: Analysis; handle: string }) {
+  const monet = useMonet(data);
   const [i, setI] = useState(0);
   const [scale, setScale] = useState(1);
   const wrap = useRef<HTMLDivElement>(null);
 
-  const slides = data ? buildSlides(data) : [];
+  const slides = buildSlides(data, monet.data);
   const total = slides.length;
 
   useEffect(() => {
@@ -381,7 +488,6 @@ export default function ApresentacaoPage({ params }: { params: Promise<{ handle:
     return () => window.removeEventListener("keydown", key);
   }, [total]);
 
-  if (!data) return <Loading handle={handle} />;
 
   return (
     <main className="mx-auto max-w-[1340px] px-4 pb-16 sm:px-6">
