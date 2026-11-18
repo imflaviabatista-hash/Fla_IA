@@ -5,7 +5,7 @@ import Link from "next/link";
 import { use, useEffect, useRef, useState, type ReactNode } from "react";
 import { Loading } from "@/components/Loading";
 import { proxied } from "@/components/Media";
-import { mediaKitNumbers, useMonet, withMonetStep, type MonetState } from "@/components/Monetizacao";
+import { MARCAS_VISIVEL, mediaKitNumbers, useMonet, withMonetStep, type MonetState } from "@/components/Monetizacao";
 import { Thumb } from "@/components/PostGrid";
 import { Avatar, ScoreRing } from "@/components/ui";
 import { useAnalysis } from "@/components/useAnalysis";
@@ -321,7 +321,7 @@ function buildSlides(a: Analysis, monet: MonetState): ReactNode[] {
       : []),
 
     // 9b. Monetização
-    ...(monet.marcas
+    ...(MARCAS_VISIVEL && monet.marcas
       ? [
           <div key="marcas">
             <H eyebrow="Monetização · marcas com sinergia">Quem combina com você</H>

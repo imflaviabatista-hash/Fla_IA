@@ -35,6 +35,14 @@ import { Card } from "./ui";
 /* Estado compartilhado (dashboard e apresentação)                      */
 /* ------------------------------------------------------------------ */
 
+/**
+ * Seção "Marcas com sinergia" escondida por enquanto, enquanto os dados são melhorados.
+ * Pra mostrar de novo, é só trocar pra true.
+ */
+export const MARCAS_VISIVEL = false;
+
+const SECOES_VISIVEIS: Secao[] = MARCAS_VISIVEL ? ["marcas", "afiliados", "publis"] : ["afiliados", "publis"];
+
 export interface MonetState {
   marcas: MonetResult<MarcasData> | null;
   afiliados: MonetResult<AfiliadosData> | null;
@@ -191,6 +199,7 @@ function Checks({ items }: { items: string[] }) {
 
 function SectionShell({
   n,
+  total,
   icon: I,
   title,
   subtitle,
@@ -202,6 +211,7 @@ function SectionShell({
   children,
 }: {
   n: number;
+  total: number;
   icon: typeof Check;
   title: string;
   subtitle: string;
@@ -220,7 +230,7 @@ function SectionShell({
             <I className="h-5 w-5" />
           </span>
           <div>
-            <p className="text-xs font-semibold uppercase tracking-widest text-white/50">Monetização · {n} de 3</p>
+            <p className="text-xs font-semibold uppercase tracking-widest text-white/50">Monetização · {n} de {total}</p>
             <h3 className="text-lg font-bold">{title}</h3>
             <p className="text-sm text-white/55">{subtitle}</p>
           </div>
@@ -701,14 +711,17 @@ function PublisBody({ r, analysis }: { r: MonetResult<PublisData>; analysis: Ana
 export function MonetizacaoSections({ analysis, monet }: { analysis: Analysis; monet: ReturnType<typeof useMonet> }) {
   const { data, loading, errors, run } = monet;
   const isDemo = analysis.source === "demo";
-  const anyLoading = loading.marcas || loading.afiliados || loading.publis;
+  const anyLoading = SECOES_VISIVEIS.some((s) => loading[s]);
+  const allDone = SECOES_VISIVEIS.every((s) => data[s]);
+  const total = SECOES_VISIVEIS.length;
+  const num = (s: Secao) => SECOES_VISIVEIS.indexOf(s) + 1;
   const missing = [
-    ...(data.marcas?.data.naoEncontrado ?? []).map((t) => ({ s: "Marcas", t })),
+    ...(MARCAS_VISIVEL ? (data.marcas?.data.naoEncontrado ?? []) : []).map((t) => ({ s: "Marcas", t })),
     ...(data.afiliados?.data.naoEncontrado ?? []).map((t) => ({ s: "Afiliados", t })),
     ...(data.publis?.data.naoEncontrado ?? []).map((t) => ({ s: "Publis", t })),
   ];
-  if (!data.marcas?.data.cidade.nome && data.marcas) missing.unshift({ s: "Marcas", t: "Cidade do perfil (sem dados internos do público)." });
-  const fontes = [...new Map([...(data.marcas?.fontes ?? []), ...(data.afiliados?.fontes ?? []), ...(data.publis?.fontes ?? [])].map((f) => [f.url, f])).values()];
+  if (MARCAS_VISIVEL && !data.marcas?.data.cidade.nome && data.marcas) missing.unshift({ s: "Marcas", t: "Cidade do perfil (sem dados internos do público)." });
+  const fontes = [...new Map([...(MARCAS_VISIVEL ? (data.marcas?.fontes ?? []) : []), ...(data.afiliados?.fontes ?? []), ...(data.publis?.fontes ?? [])].map((f) => [f.url, f])).values()];
 
   return (
     <div className="space-y-6">
@@ -722,12 +735,12 @@ export function MonetizacaoSections({ analysis, monet }: { analysis: Analysis; m
         </div>
         {!isDemo && (
           <button
-            onClick={() => (["marcas", "afiliados", "publis"] as Secao[]).forEach((s) => !loading[s] && run(s))}
+            onClick={() => SECOES_VISIVEIS.forEach((s) => !loading[s] && run(s))}
             disabled={anyLoading}
             className="inline-flex items-center gap-2 rounded-full bg-sunset px-5 py-2.5 text-sm font-bold shadow-lg shadow-pink-500/20 transition hover:brightness-110 active:scale-95 disabled:opacity-60"
           >
             {anyLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
-            {anyLoading ? "Pesquisando..." : data.marcas && data.afiliados && data.publis ? "Atualizar as 3" : "Gerar as 3 seções"}
+            {anyLoading ? "Pesquisando..." : allDone ? "Atualizar tudo" : `Gerar as ${total} seções`}
           </button>
         )}
       </div>
@@ -736,8 +749,10 @@ export function MonetizacaoSections({ analysis, monet }: { analysis: Analysis; m
         <p className="rounded-2xl bg-white/[0.04] p-4 text-sm text-white/55">A pesquisa de monetização só roda com perfis reais, porque ela usa as marcas e os números de verdade do perfil.</p>
       ) : (
         <>
+          {MARCAS_VISIVEL && (
           <SectionShell
-            n={1}
+            n={num("marcas")}
+            total={total}
             icon={Handshake}
             title="Marcas com sinergia"
             subtitle="Quem combina com o seu nicho, o seu público e a sua cidade."
@@ -749,9 +764,11 @@ export function MonetizacaoSections({ analysis, monet }: { analysis: Analysis; m
           >
             {data.marcas && <MarcasBody r={data.marcas} analysis={analysis} />}
           </SectionShell>
+          )}
 
           <SectionShell
-            n={2}
+            n={num("afiliados")}
+            total={total}
             icon={Store}
             title="Permuta e programas de afiliados"
             subtitle="Onde se cadastrar e como pedir permuta, com links oficiais."
@@ -765,7 +782,8 @@ export function MonetizacaoSections({ analysis, monet }: { analysis: Analysis; m
           </SectionShell>
 
           <SectionShell
-            n={3}
+            n={num("publis")}
+            total={total}
             icon={Megaphone}
             title="Como atrair e fechar publis"
             subtitle="Perfil pronto, mídia kit, abordagem, preço, entrega e regras."
